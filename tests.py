@@ -10,7 +10,7 @@ def test_rotation_matrix_sanity():
     X = truly_random_so_matrix(3)
     print(X.conj().T @ X)
     assert np.allclose(X.conj().T @ X, np.eye(3), atol=1.e-8)
-    assert 1 == pytest.approx(np.linalg.det(X), 1e-5)
+    assert 1 == pytest.approx(np.linalg.det(X))
 
 
 def test_projection_matrix_for_rotation():
@@ -18,16 +18,16 @@ def test_projection_matrix_for_rotation():
     print(X)
     projection = get_so_projection(X)
     print(projection)
-    assert projection == pytest.approx(X, 1e-5)
+    assert projection == pytest.approx(X)
 
-    assert np.eye(3) == pytest.approx(projection.T.conj() @ projection, 1e-5)
-    assert 1 == pytest.approx(np.linalg.det(projection), 1e-5)
+    assert np.eye(3) == pytest.approx(projection.T.conj() @ projection)
+    assert 1 == pytest.approx(np.linalg.det(projection))
 
 
 def test_projection_matrix_not_rotation():
     X = np.array([[2, 0, 0], [0, 1, 0], [0, 0, 1]])
     projection = get_so_projection(X)
-    assert projection == pytest.approx(np.eye(3), abs=1e-5)
+    assert projection == pytest.approx(np.eye(3))
 
 
 def test_error_sanity():
