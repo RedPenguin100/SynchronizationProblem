@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from matplotlib import pyplot as plt
 
-from exer1 import get_so_projection, get_error, solve_sync_with_spectral, truly_random_so_matrix, \
+from sync_library import get_so_projection, get_error, solve_sync_with_spectral, truly_random_so_matrix, \
     block_assignment, add_noise_to_matrix
 
 
