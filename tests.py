@@ -66,7 +66,7 @@ def test_eigenvalue(times):
 
     R_hat = solve_sync_with_spectral(B, d)
     V = V.reshape((n, d, d))
-    assert 0 == pytest.approx(get_error(R_hat, V, d), abs=1e-5)
+    assert 0 == pytest.approx(get_error(R_hat, V, d))
 
 
 @pytest.mark.skip
