@@ -1,30 +1,5 @@
-import random
-
 import numpy as np
 import matplotlib.pyplot as plt
-
-
-def get_rotation_x(theta):
-    return np.array([[1, 0, 0],
-                     [0, np.cos(theta), -np.sin(theta)],
-                     [0, np.sin(theta), np.cos(theta)]])
-
-
-def get_rotation_y(theta):
-    return np.array([[np.cos(theta), 0, np.sin(theta)],
-                     [0, 1, 0],
-                     [-np.sin(theta), 0, np.cos(theta)]])
-
-
-def get_rotation_z(theta):
-    return np.array([[np.cos(theta), -np.sin(theta), 0],
-                     [np.sin(theta), np.cos(theta), 0],
-                     [0, 0, 1]])
-
-
-def get_random_rotation():
-    theta1, theta2, theta3 = np.random.uniform(0, 2 * np.pi, 3)
-    return get_rotation_x(theta1) @ get_rotation_y(theta2) @ get_rotation_z(theta3)
 
 
 def get_so_projection(X, n=3):

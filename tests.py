@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from matplotlib import pyplot as plt
 
-from exer1 import get_random_rotation, get_so_projection, get_error, solve_sync_with_spectral, truly_random_so_matrix, \
+from exer1 import get_so_projection, get_error, solve_sync_with_spectral, truly_random_so_matrix, \
     block_assignment, add_noise_to_matrix
 
 
@@ -31,8 +31,8 @@ def test_projection_matrix_not_rotation():
 
 
 def test_error_sanity():
-    rot1 = get_random_rotation()
-    rot2 = get_random_rotation()
+    rot1 = truly_random_so_matrix(3)
+    rot2 = truly_random_so_matrix(3)
 
     rot1_disturbed = rot1
     rot2_disturbed = rot2
@@ -43,8 +43,8 @@ def test_error_sanity():
 
 
 def test_error_noisy():
-    rot1 = get_random_rotation()
-    rot2 = get_random_rotation()
+    rot1 = truly_random_so_matrix(3)
+    rot2 = truly_random_so_matrix(3)
 
     rot1_disturbed = rot1 + np.random.normal(0, 0.1, (3, 3))
     rot2_disturbed = rot2 + np.random.normal(0, 0.1, (3, 3))
@@ -70,10 +70,10 @@ def test_eigenvalue(times):
 
 
 @pytest.mark.skip
-def test_histogram():
-    n = 400
+def test_pure_half_circle():
+    n = 600
     d = 3
-    p = 0.5  # Probability of getting good matrix
+    p = 0.2  # Probability of getting good matrix
 
     stack = [truly_random_so_matrix(d) for _ in range(n)]
     V = np.vstack(stack)
@@ -85,8 +85,7 @@ def test_histogram():
 
     plt.figure(2)
 
-    plt.hist(np.real(v), bins=30, label='real')
-    plt.hist(np.imag(v), bins=30, label='imaginary')
+    plt.hist(v, bins=30, label='imaginary')
 
     plt.title('Histograms of the spectrum matrix W.  n={n}, p={p}'.format(n=n, p=p))
     plt.show()
