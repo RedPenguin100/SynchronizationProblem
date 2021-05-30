@@ -14,11 +14,13 @@ def test_rotation_matrix_sanity():
 
 
 def test_projection_matrix_for_rotation():
-    X = get_random_rotation()
+    X = truly_random_so_matrix(3)
+    print(X)
     projection = get_so_projection(X)
+    print(projection)
     assert projection == pytest.approx(X, 1e-5)
 
-    assert np.eye(3) == pytest.approx(projection.T @ projection, 1e-5)
+    assert np.eye(3) == pytest.approx(projection.T.conj() @ projection, 1e-5)
     assert 1 == pytest.approx(np.linalg.det(projection), 1e-5)
 
 
@@ -67,6 +69,7 @@ def test_eigenvalue(times):
     assert 0 == pytest.approx(get_error(R_hat, V, d), abs=1e-5)
 
 
+@pytest.mark.skip
 def test_histogram():
     n = 400
     d = 3
@@ -89,6 +92,7 @@ def test_histogram():
     plt.show()
 
 
+@pytest.mark.skip
 def test_histogram_B_noisy():
     n = 600
     d = 3

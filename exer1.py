@@ -33,10 +33,10 @@ def get_so_projection(X, n=3):
     # the numerical error is too large otherwise.
     S = np.zeros((n, n), dtype='complex128')
     np.fill_diagonal(S, 1)
-    S[-1][-1] = np.linalg.det(U @ Vt)
+    S[-1][-1] = np.linalg.det(U @ Vt).conj()
     # The conj() might not be necessary for the real matrices
     # but is absolutely-must for the complex matrices.
-    ret = (U.conj() @ S) @ Vt.conj()
+    ret = ((U @ S) @ Vt)
     return ret
 
 
@@ -57,11 +57,11 @@ def get_error(expected, actual, dim=3):
     assert d2 == dim
 
     # Error retrieving logic
-    Q = _get_minimizer(expected, actual)
+    Q = _get_minimizer(expected.conj(), actual)
     error = 0
     for i in range(n):
         # The addition of `conj` to expected[i] is crucial for the complex case.
-        error += np.linalg.norm(expected[i].conj() - actual[i] @ Q) ** 2
+        error += np.linalg.norm(expected[i] - actual[i] @ Q.conj()) ** 2
 
     return error
 
