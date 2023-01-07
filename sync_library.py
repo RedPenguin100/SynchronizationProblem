@@ -1,18 +1,23 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from numba import njit
 
 
-def get_so_projection(X, n=3):
+@njit
+def get_so_projection(X, d=3):
+    """
+    :param X: matrix to get projection of
+    :param d: dimension of matrix
+    """
     U, sigma, Vt = np.linalg.svd(X)
     # The dtype conversion is absolutely necessary because
     # the numerical error is too large otherwise.
-    S = np.zeros((n, n), dtype='complex128')
+    S = np.zeros((d, d), dtype=X.dtype)
     np.fill_diagonal(S, 1)
-    S[-1][-1] = np.linalg.det(U @ Vt).conj()
+    S[-1][-1] = np.conj(np.linalg.det(U @ Vt))
     # The conj() might not be necessary for the real matrices
     # but is absolutely-must for the complex matrices.
-    ret = ((U @ S) @ Vt)
-    return ret
+    return (U @ S) @ Vt
 
 
 def _get_minimizer(expected, actual):
@@ -64,17 +69,20 @@ def solve_sync_with_spectral(data, d=3):
     return R_hat
 
 
-def truly_random_so_matrix(n):
+@njit
+def truly_random_so_matrix(d):
     """
-    :param n: dimension
+    :param d: dimension
     """
-    z = (np.random.randn(n, n) + 1j * np.random.randn(n, n)) / np.sqrt(2.0)
+    z = (np.random.randn(d, d) + 1j * np.random.randn(d, d)) / np.sqrt(2.0)
     Q, R = np.linalg.qr(z)
-    D = np.diagonal(R)
+    D = np.empty(d, dtype=np.complex128)
+    for i in range(d):
+        D[i] = R[i,i]
     normalizing_matrix = D / np.absolute(D)
     Q_tag = np.multiply(Q, normalizing_matrix)
     Q_tag = Q_tag.astype('complex_')
-    return get_so_projection(Q_tag, n)
+    return get_so_projection(Q_tag, d)
 
 
 def haar_measure_sampling_evidence(n):
@@ -90,6 +98,7 @@ def haar_measure_sampling_evidence(n):
     plt.show()
 
 
+@njit
 def block_assignment(wall, block, i, j):
     """
     Insert a `block` matrix to `wall` in position `i,j` with respect
@@ -112,6 +121,7 @@ def block_assignment(wall, block, i, j):
     wall[d * i: d * (i + 1), d * j:d * (j + 1)] = block
 
 
+@njit
 def add_noise_to_matrix(H, d, p):
     """
     H - the matrix we want to add noise to

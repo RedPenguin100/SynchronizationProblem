@@ -18,6 +18,7 @@ def test_projection_matrix_for_rotation():
     print(X)
     projection = get_so_projection(X)
     print(projection)
+    # Projection of x should be same as x in SO(3)
     assert projection == pytest.approx(X)
 
     assert np.eye(3) == pytest.approx(projection.T.conj() @ projection)
@@ -25,7 +26,7 @@ def test_projection_matrix_for_rotation():
 
 
 def test_projection_matrix_not_rotation():
-    X = np.array([[2, 0, 0], [0, 1, 0], [0, 0, 1]])
+    X = np.array([[2, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
     projection = get_so_projection(X)
     assert projection == pytest.approx(np.eye(3))
 
@@ -69,7 +70,6 @@ def test_eigenvalue(times):
     assert 0 == pytest.approx(get_error(R_hat, V, d))
 
 
-@pytest.mark.skip
 def test_pure_half_circle():
     n = 600
     d = 3
@@ -91,7 +91,6 @@ def test_pure_half_circle():
     plt.show()
 
 
-@pytest.mark.skip
 def test_histogram_B_noisy():
     n = 600
     d = 3
@@ -114,13 +113,13 @@ def test_histogram_B_noisy():
 
 
 def test_block_assignment():
-    a = np.array([[1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3], [4, 4, 4, 4]])
+    a = np.array([[1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3], [4, 4, 4, 4]], dtype=np.float64)
     z = np.zeros((2, 2))
     block_assignment(a, z, 1, 1)
     print(a)
 
 
 def test_create_noisy_matrix():
-    a = np.array([[1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3], [4, 4, 4, 4]], dtype='complex128')
+    a = np.array([[1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3], [4, 4, 4, 4]], dtype=np.complex128)
     add_noise_to_matrix(a, 2, 0.5)
     print(a)
