@@ -46,21 +46,46 @@ def get_error(expected, actual, dim=3):
     return error
 
 
-def solve_sync_with_spectral(data, d=3):
+@njit
+def create_d_matrix(d: int, weights: np.ndarray):
+    assert len(weights.shape) == 2
+    assert weights.shape[0] == weights.shape[1]
+
+    n = weights.shape[0]
+    i_matrix = np.eye(d)
+
+    D = np.zeros((d * n, d * n))
+    for i in range(n):
+        D[d * i:d * i + d, d * i:d * i + d] = i_matrix * np.sum(weights[i, :])
+
+    return D
+
+
+def solve_sync_with_spectral(data, d, weights=None):
+    """
+    :param data: Graph matrix containing description of all nodes
+    :param d: Dimension of rotation
+    :param weights: if weights exist, display confidence in data
+    """
     # Assertions
     assert len(data.shape) == 2
     nd, nd2 = data.shape
     assert nd == nd2
     n = nd // d
     assert n * d == nd
+    if weights is not None:
+        assert weights.shape == (n, n)
 
     for i in range(n):
-        assert np.isclose(data[i][i], 1)
+        assert np.isclose(data[i,i], 1)
 
     # Actual derivation
-    w, v = np.linalg.eig(data)
+    if weights is not None:
+        D = create_d_matrix(d, weights)
+        data = np.linalg.inv(D) @ data
 
-    v_args = np.argwhere(np.isclose(n, w))
+    w, v = np.linalg.eig(data)
+    v_args = np.argsort(w)[-d:]
     V_hat = v[:, v_args].reshape((n, d, d))
 
     R_hat = np.copy(V_hat)
@@ -78,7 +103,7 @@ def truly_random_so_matrix(d):
     Q, R = np.linalg.qr(z)
     D = np.empty(d, dtype=np.complex128)
     for i in range(d):
-        D[i] = R[i,i]
+        D[i] = R[i, i]
     normalizing_matrix = D / np.absolute(D)
     Q_tag = np.multiply(Q, normalizing_matrix)
     Q_tag = Q_tag.astype('complex_')
@@ -145,3 +170,34 @@ def add_noise_to_matrix(H, d, p):
 
     for i, j in index_list:
         block_assignment(H, truly_random_so_matrix(d), i, j)
+
+
+@njit
+def add_holes_to_matrix(H, d, p):
+    """
+    H - the matrix we want to add noise to
+    p - concentration of non-holes
+    d - dimension of rotation
+    :return: indexes of newly added holes
+    """
+    # Validations
+    assert len(H.shape) == 2
+    nd, nd2 = H.shape
+    assert nd == nd2
+    n = nd // d
+    assert n * d == nd
+
+    # Actual logic
+    index_list = []
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                continue
+            if 1 == np.random.binomial(1, 1 - p):
+                index_list.append((i, j))
+
+    zeros = np.zeros((d, d))
+    for i, j in index_list:
+        block_assignment(H, zeros, i, j)
+
+    return index_list

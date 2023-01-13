@@ -3,7 +3,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from sync_library import get_so_projection, get_error, solve_sync_with_spectral, truly_random_so_matrix, \
-    block_assignment, add_noise_to_matrix
+    block_assignment, add_noise_to_matrix, add_holes_to_matrix, create_d_matrix
 
 
 def test_rotation_matrix_sanity():
@@ -32,15 +32,14 @@ def test_projection_matrix_not_rotation():
 
 
 def test_error_sanity():
-    rot1 = truly_random_so_matrix(3)
-    rot2 = truly_random_so_matrix(3)
+    d = 3
+    rot1 = truly_random_so_matrix(d)
+    rot2 = truly_random_so_matrix(d)
 
-    rot1_disturbed = rot1
-    rot2_disturbed = rot2
     rot = np.array((rot1, rot2))
-    rot_dis = np.array((rot1_disturbed, rot2_disturbed))
+    rot_dis = np.array((rot1, rot2))
 
-    assert 0 == pytest.approx(get_error(expected=rot, actual=rot_dis))
+    assert 0 == pytest.approx(get_error(expected=rot, actual=rot_dis, dim=d))
 
 
 def test_error_noisy():
@@ -55,10 +54,10 @@ def test_error_noisy():
     assert get_error(expected=rot, actual=rot_dis) < 0.4
 
 
-@pytest.mark.parametrize('times', range(100))
-def test_eigenvalue(times):
-    n = 5
-    d = 2
+@pytest.mark.parametrize('times', range(10))
+@pytest.mark.parametrize('n', [10, 50, 100])
+@pytest.mark.parametrize('d', [2, 3])
+def test_eigenvalue(times, n, d):
     stack = [truly_random_so_matrix(d) for _ in range(n)]
     V = np.vstack(stack)
     B = V @ V.T.conj()
@@ -70,8 +69,71 @@ def test_eigenvalue(times):
     assert 0 == pytest.approx(get_error(R_hat, V, d))
 
 
+@pytest.mark.parametrize('n', [100])
+@pytest.mark.parametrize('d', [2, 3])
+@pytest.mark.parametrize('p', [0.2])
+def test_partial_graph_eigenvalue(n, d, p):
+    # Setup
+    stack = [truly_random_so_matrix(d) for _ in range(n)]
+    V = np.vstack(stack)
+    B = V @ V.T.conj()
+    B_partial = np.copy(B)
+    hole_indexes = add_holes_to_matrix(B_partial, d, p)
+    # Weights
+    ones = np.ones((n, n))
+    for index in hole_indexes:
+        ones[index] = 0
+    # logic
+    R_hat = solve_sync_with_spectral(B_partial, d, ones)
+    V = V.reshape((n, d, d))
+    assert 0 == pytest.approx(get_error(R_hat, V, d))
+
+
+# Algo is not good enough for outliers yet, although it can reconstruct fair amount of information.
+@pytest.mark.skip
+@pytest.mark.parametrize('n', [10])
+@pytest.mark.parametrize('d', [2, 3])
+@pytest.mark.parametrize('p', [0.9])
+def test_graph_with_false_measurements_eigenvalue(n, d, p):
+    # Setup
+    stack = [truly_random_so_matrix(d) for _ in range(n)]
+    V = np.vstack(stack)
+    B = V @ V.T.conj()
+    B_partial = np.copy(B)
+    add_noise_to_matrix(B_partial, d, p)
+
+    # logic
+    R_hat = solve_sync_with_spectral(B_partial, d)
+    V = V.reshape((n, d, d))
+    assert 0 == pytest.approx(get_error(R_hat, V, d))
+
+
+def test_D_matrix():
+    weights = np.array([[0, 1, 1], [1, 0, 1], [1, 1, 0]])
+
+    D = create_d_matrix(3, weights)
+    assert (2 * np.eye(3 * 3) == D).all()
+
+
+def test_spectral_validity_dimension():
+    n = 5
+    d = 3
+
+    stack = [truly_random_so_matrix(d) for _ in range(n)]
+    V = np.vstack(stack)
+    B = V @ V.T.conj()
+
+    ones = np.ones((n, n))
+
+    # This should not throw
+    solve_sync_with_spectral(B, d, ones)
+
+    with pytest.raises(AssertionError):
+        solve_sync_with_spectral(B, d, ones[1:])
+
+
 def test_pure_half_circle():
-    n = 600
+    n = 100
     d = 3
     p = 0.2  # Probability of getting good matrix
 
@@ -82,10 +144,11 @@ def test_pure_half_circle():
     add_noise_to_matrix(B_noisy, d, p)
     W = B_noisy - p * (V @ V.T.conj())
     v = np.linalg.eigvals(W)
+    b_noisy_eigenvalues = np.linalg.eigvals(B_noisy)
 
     plt.figure(2)
 
-    plt.hist(v, bins=30, label='imaginary')
+    plt.hist(b_noisy_eigenvalues, bins=30, label='imaginary')
 
     plt.title('Histograms of the spectrum matrix W.  n={n}, p={p}'.format(n=n, p=p))
     plt.show()
