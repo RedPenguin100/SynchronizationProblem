@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from numba import njit
 
 
@@ -14,7 +13,7 @@ def get_so_projection(X, d=3):
     # the numerical error is too large otherwise.
     S = np.zeros((d, d), dtype=X.dtype)
     np.fill_diagonal(S, 1)
-    S[-1][-1] = np.conj(np.linalg.det(U @ Vt))
+    S[-1, -1] = np.conj(np.linalg.det(U @ Vt))
     # The conj() might not be necessary for the real matrices
     # but is absolutely-must for the complex matrices.
     return (U @ S) @ Vt
@@ -77,7 +76,7 @@ def solve_sync_with_spectral(data, d, weights=None):
         assert weights.shape == (n, n)
 
     for i in range(n):
-        assert np.isclose(data[i,i], 1)
+        assert np.isclose(data[i, i], 1)
 
     # Actual derivation
     if weights is not None:
@@ -89,6 +88,8 @@ def solve_sync_with_spectral(data, d, weights=None):
     V_hat = v[:, v_args].reshape((n, d, d))
 
     R_hat = np.copy(V_hat)
+
+    # TODO: get projection, check if this is really problem
     for i in range(n):
         R_hat[i] = get_so_projection(V_hat[i], d)
     return R_hat
@@ -108,19 +109,6 @@ def truly_random_so_matrix(d):
     Q_tag = np.multiply(Q, normalizing_matrix)
     Q_tag = Q_tag.astype('complex_')
     return get_so_projection(Q_tag, d)
-
-
-def haar_measure_sampling_evidence(n):
-    """
-    Choose a high dimension(~1000+) so that it is more visible.
-    :note: computation might take a while.
-    """
-    M = truly_random_so_matrix(n)
-    w, v = np.linalg.eig(M)
-    count, bins, ignored = plt.hist(np.angle(w), 15, density=True)
-    density = np.ones_like(bins) / (2 * np.pi)
-    plt.plot(bins, density, linewidth=2, color='r')
-    plt.show()
 
 
 @njit

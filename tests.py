@@ -6,6 +6,18 @@ from sync_library import get_so_projection, get_error, solve_sync_with_spectral,
     block_assignment, add_noise_to_matrix, add_holes_to_matrix, create_d_matrix
 
 
+def haar_measure_sampling_evidence(n):
+    """
+    Choose a high dimension(~1000+) so that it is more visible.
+    :note: computation might take a while.
+    """
+    M = truly_random_so_matrix(n)
+    w, v = np.linalg.eig(M)
+    count, bins, ignored = plt.hist(np.angle(w), 15, density=True)
+    density = np.ones_like(bins) / (2 * np.pi)
+    plt.plot(bins, density, linewidth=2, color='r')
+    plt.show()
+
 def test_rotation_matrix_sanity():
     X = truly_random_so_matrix(3)
     print(X.conj().T @ X)
@@ -90,7 +102,6 @@ def test_partial_graph_eigenvalue(n, d, p):
 
 
 # Algo is not good enough for outliers yet, although it can reconstruct fair amount of information.
-@pytest.mark.skip
 @pytest.mark.parametrize('n', [10])
 @pytest.mark.parametrize('d', [2, 3])
 @pytest.mark.parametrize('p', [0.9])
