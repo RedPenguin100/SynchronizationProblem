@@ -87,8 +87,8 @@ def scipy_constraints(sample_size, dimensions):
     constraints = []
 
     for i in range(sample_size):
-        constraints.append({'type': 'eq', 'fun': lambda x0, i=i, sample_size=sample_size, dimensions=dimensions: np.sum(
-            x0.reshape((sample_size, dimensions))[i]) - 1})
+        constraints.append({'type': 'eq', 'fun': lambda x0, i=i, dimensions=dimensions: np.sum(
+            x0[dimensions * i: dimensions * i + dimensions]) - 1})
 
     constraints.append({'type': 'ineq', 'fun': lambda x0: x0})
 
