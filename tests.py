@@ -55,15 +55,17 @@ def test_error_sanity():
 
 
 def test_error_noisy():
-    rot1 = truly_random_so_matrix(3)
-    rot2 = truly_random_so_matrix(3)
+    dimension = 3
 
-    rot1_disturbed = rot1 + np.random.normal(0, 0.1, (3, 3))
-    rot2_disturbed = rot2 + np.random.normal(0, 0.1, (3, 3))
+    rot1 = truly_random_so_matrix(dimension)
+    rot2 = truly_random_so_matrix(dimension)
+
+    rot1_disturbed = rot1 + np.random.normal(0, 0.1, (dimension, dimension))
+    rot2_disturbed = rot2 + np.random.normal(0, 0.1, (dimension, dimension))
     rot = np.array((rot1, rot2))
     rot_dis = np.array((rot1_disturbed, rot2_disturbed))
 
-    assert get_error(expected=rot, actual=rot_dis) < 0.4
+    assert get_error(expected=rot, actual=rot_dis, dim=dimension) < 0.4
 
 
 @pytest.mark.parametrize('times', range(10))

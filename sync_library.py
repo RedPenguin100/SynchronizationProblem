@@ -27,7 +27,7 @@ def _get_minimizer(expected, actual):
     return get_so_projection(actual.T @ expected, d)
 
 
-def get_error(expected, actual, dim=3):
+def get_error(expected, actual, dim):
     # Validation logic
     assert expected.shape == actual.shape, "Dimension mismatch!"
     assert len(expected.shape) == 3
