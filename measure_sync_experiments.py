@@ -3,7 +3,6 @@ from numba import njit
 from measure_sync_library import array_validation
 
 
-@njit
 def get_shifted(signal: np.array, shifts: np.array, signal_size, n):
     shifted_signal = np.zeros((n, signal_size))
     for i in range(n):
@@ -28,10 +27,12 @@ def get_noisy_samples_from_signal(signal: np.array, n, sigma):
     # Adding noise
     noise = np.random.normal(0, scale=sigma, size=(n, signal_size))
 
-
-
     shifted_noisy = shifted_signal + noise
-    pos_shifted_noisy = shifted_noisy + np.abs(np.min(shifted_noisy, axis=1))[:, None]
-    print(shifted_noisy[0])
-    pos_shifted_noisy_normalized = pos_shifted_noisy / np.linalg.norm(pos_shifted_noisy, axis=1)[:, None]
-    return pos_shifted_noisy_normalized, noise, shifts
+
+    return shifted_noisy, noise, shifts
+
+
+def get_noisy_normalized(noisy_samples):
+    pos_shifted_noisy = noisy_samples + np.abs(np.min(noisy_samples, axis=1))[:, None]
+    print(noisy_samples[0])
+    return pos_shifted_noisy / np.linalg.norm(pos_shifted_noisy, axis=1)[:, None]
