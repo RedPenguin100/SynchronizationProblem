@@ -5,7 +5,7 @@ import numpy as np
 import cvxpy as cp
 import scipy.optimize
 
-from measure_sync_experiments import get_noisy_samples_from_signal, get_shifted
+from measure_sync_experiments import *
 from measure_sync_library import *
 
 
@@ -42,66 +42,53 @@ def test_best_shift_distribution_sanity():
     print(index)
 
 
-@njit
-def compare_samples_up_to_shift(samples, result):
-    if len(samples.shape) != 2:
+def compare_samples_up_to_shift(truth, result):
+    if len(truth.shape) != 2:
         raise ValueError("samples.shape is not len 2")
-    if samples.shape != result.shape:
+    if truth.shape != result.shape:
         raise ValueError("Bad shapes")
-    sample_size, dimension = samples.shape
+    sample_size, dimension = truth.shape
 
+    noiseless = attempt_samples_to_noiseless(result)
     total_cost = np.inf
     total_wrongs_in_best_shift = 0
 
+    wrong_samples = []
     for shift in range(sample_size):
         cost = 0.
         wrongs = 0
+        wrong_samples_temp = []
         for sample in range(sample_size):
-            temp_cost = np.linalg.norm(samples[sample] - np.roll(result[sample], shift))
+            rolled_sample = np.roll(noiseless[sample], shift)
+            temp_cost = np.linalg.norm(truth[sample] - rolled_sample)
             cost += temp_cost
             if temp_cost > 0:
                 wrongs += 1
-
+                wrong_samples_temp.append(np.roll(result[sample], shift))
         if cost < total_cost:
             total_wrongs_in_best_shift = wrongs
             total_cost = cost
+            wrong_samples = wrong_samples_temp
 
+    print("wrong_samples: ", wrong_samples)
+    tol = 0.6
+    for sample in range(sample_size):
+        sort = np.sort(result[sample])
+        if (sort[-1] - sort [-2]) < 0.1:
+            print (result[sample])
     return total_cost, total_wrongs_in_best_shift
 
 
 def attempt_samples_to_noiseless(samples):
     assert len(samples.shape) == 2
-    sample_size, dimension = samples.shape
+    samples_copy = np.copy(samples)
+    sample_size, dimension = samples_copy.shape
     for sample in range(sample_size):
-        argmax = np.argmax(samples[sample])
-        samples[sample] = np.zeros(dimension)
-        samples[sample][argmax] = 1.
-
-
-def test_least_squares_solver_scipy():
-    samples = 4
-    dimension = 3
-
-    noiseless = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 1, 0]])
-
-    a = np.array([1.1, 0.1, 0.2], dtype=np.float64)
-    b = np.array([0, 1, 0.2], dtype=np.float64)
-    c = np.array([0, 0.1, 1], dtype=np.float64)
-    d = np.array([0, 1.1, 0], dtype=np.float64)
-
-    sample_data = np.array([a, b, c, d])
-    res = solve_measure_sync_scipy(sample_data)  # rho hat
-
-    assert res.success, res
-    assert res.fun < 0.5
-
-    np.set_printoptions(precision=3)
-    solutions = np.reshape(res.x, (samples, dimension))
-    print("\nx=", solutions)
-
-    attempt_samples_to_noiseless(solutions)
-
-    print(compare_samples_up_to_shift(noiseless, solutions))
+        # argmax = np.argmax(np.abs(samples_copy[sample]))
+        argmax = np.argmax(samples_copy[sample])
+        samples_copy[sample] = np.zeros(dimension)
+        samples_copy[sample][argmax] = 1.
+    return samples_copy
 
 
 def test_noisy_samples():
@@ -117,29 +104,147 @@ def test_noisy_samples():
     assert pytest.approx(np.linalg.norm(noisy_samples, axis=1)) == np.ones(samples)
 
 
-@pytest.mark.parametrize('sigma', [0.1, 0.2, 0.3, 0.4, 0.5])
-def test_measure_sync(sigma):
+def align_samples(sample1, sample2):
+    assert sample1.shape == sample2.shape
+    return np.argmax(discrete_cross_correlation(sample1, sample2))
+
+
+def test_shift():
     np.random.seed(42)
+    # Create signal [1, -1, 0, ... ,0]
+    dimension = 15
+    samples = 45
+    x = np.zeros(dimension)
+    x[0] = -1
+    x[1] = 1
+    noise = np.random.normal(0, 1, dimension)
+
+    assert align_samples(x, np.roll(x, 1)) == 1
+    assert align_samples(x, noise + np.roll(x, 1)) == 1
+
+
+@njit
+def shifts_to_matrix(shifts: np.array, samples, dimension):
+    # assert len(shifts.shape) == 1
+    # assert samples == shifts.shape[0]
+    matrix = np.zeros((samples, dimension))
+    for i in range(samples):
+        matrix[i, shifts[i]] = 1
+    return matrix
+
+
+def get_best_apriori_guess(noisy_samples, dimension, samples):
+    row_max_indices = np.argmax(noisy_samples, axis=1)
+    wrong_guesses = np.zeros((samples, dimension))
+    wrong_guesses[np.arange(samples), row_max_indices] = 1
+    return wrong_guesses.reshape((samples * dimension))
+
+
+def reconstruct_signal_from_solution(noisy_samples, solution):
+    assert len(solution.shape) == 2
+    assert len(noisy_samples.shape) == 2
+    samples, dimension = solution.shape
+    noiseless = attempt_samples_to_noiseless(solution)
+    signal = np.zeros(dimension)
+    for sample in range(samples):
+        signal += np.roll(noisy_samples[sample, :], - np.argmax(noiseless[sample, :]))
+    return signal / samples
+
+
+@pytest.mark.parametrize('times', list(range(5)))
+@pytest.mark.parametrize('sigma', [
+    # 0.,
+    # 0.1,
+    0.2,
+    0.25,
+    0.3,
+    0.4,
+    0.5,
+    # 0.8,
+    # 1.
+])
+@pytest.mark.parametrize('samples', [15,
+                                     # 25, 35, 45
+                                     ])
+@pytest.mark.parametrize('dimension', [5,
+                                       # 7, 10, 12, 15
+                                       ])
+def test_measure_sync(sigma, samples, dimension, times):
+    np.random.seed(times)
+    np.set_printoptions(precision=2)
+
     # Create signal [1, 0, 0, ... ,0]
-    dimension = 5
-    samples = 25
     x = np.zeros(dimension)
     x[0] = 1
+    # x[1] = -1
+    x = x / np.linalg.norm(x)
+    print("Conv, ", discrete_convolution(x, np.roll(x, 1)))
+    print("Signal: ", x)
+    if sigma == 0.:
+        print("Noiseless setting")
+    else:
+        print(f"\nSNR={1 / sigma}")
     # Add noise:
     noisy_samples, noise, shifts = get_noisy_samples_from_signal(x, n=samples, sigma=sigma)
+    truth = get_shifted(x, shifts, dimension, samples)
+    shift_matrix = shifts_to_matrix(shifts, samples, dimension)
+    print("shift_matrix: ", shift_matrix)
+    distributions = get_distributions_from_noisy_samples(noisy_samples, samples, dimension)
 
-    res = solve_measure_sync_scipy(noisy_samples)
+    print(scipy_get_cost(shift_matrix, distributions, samples, dimension))
+    print(scipy_get_cost(truth, distributions, samples, dimension))
 
-    print(res)
-    assert res.success, res
+    # initial guess
 
-    np.set_printoptions(precision=3)
-    solutions = np.reshape(res.x, (samples, dimension))
-    print("\nx=", solutions)
+    best_apriori_guess = stupid_solution(noisy_samples)
+    best_possible_guess = shift_matrix.reshape((samples * dimension))
+    bad_guess = np.ones((samples * dimension)) / dimension
 
-    attempt_samples_to_noiseless(solutions)
+    res2 = solve_measure_sync_scipy(distributions, best_apriori_guess)
+    res3 = solve_measure_sync_scipy(distributions, best_possible_guess)
+    # res4 = solve_measure_sync_scipy(distributions, bad_guess)
+    stupid_sol = stupid_solution(noisy_samples)
 
-    print(compare_samples_up_to_shift(get_shifted(x, shifts, dimension, samples), solutions))
+    print("stupid_sol cost: ",
+          scipy_get_cost(stupid_sol.reshape(dimension * samples), distributions, samples, dimension))
+    print(f"nfev: {res2.nfev},"
+          f" {res3.nfev},"
+          # f" {res4.nfev}"
+          )
+    print(f"nit: {res2.nit},"
+          f" {res3.nit},"
+          # f" {res4.nit}"
+          )
+    print(f"njev: {res2.njev},"
+          f" {res3.njev},"
+          # f" {res4.njev}"
+          )
+    print(f"fun: {res2.fun}, "
+          f"{res3.fun},"
+          # f" {res4.fun}"
+          )
+    assert res3.success, res3.message
+
+    best_apriori_solutions = np.reshape(res2.x, (samples, dimension))
+    best_possible_solutions = np.reshape(res3.x, (samples, dimension))
+    # bad_guess_solutions = np.reshape(res4.x, (samples, dimension))
+
+    print("Apriori best guess: ", compare_samples_up_to_shift(shift_matrix, best_apriori_solutions))
+    print("Best possible guess: ", compare_samples_up_to_shift(shift_matrix, best_possible_solutions))
+    # print("Uniform guess: ", compare_samples_up_to_shift(shift_matrix, bad_guess_solutions))
+    print("Stupid solution: ", compare_samples_up_to_shift(shift_matrix, stupid_sol))
+    signal_1 = reconstruct_signal_from_solution(noisy_samples, best_apriori_solutions)
+    signal_2 = reconstruct_signal_from_solution(noisy_samples, best_possible_solutions)
+    signal_3 = reconstruct_signal_from_solution(noisy_samples, stupid_sol)
+    perfect = reconstruct_signal_from_solution(noisy_samples, shift_matrix)
+    print("Signal 1", signal_1)
+    print("Signal 2", signal_2)
+    print("Signal 3", signal_3)
+    print("Perfect ", perfect)
+    print("Total noise 1: ", np.linalg.norm(signal_1 - x))
+    print("Total noise 2: ", np.linalg.norm(signal_2 - x))
+    print("Total noise 3: ", np.linalg.norm(signal_3 - x))
+    print("Total noise perfect alignment: ", np.linalg.norm(perfect - x))
 
 # TODO: fix / delete cvxpy implementation
 # def cvxpy_discrete_convolution(arr1: cp.Expression, arr2: cp.Expression):

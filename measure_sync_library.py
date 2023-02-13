@@ -17,6 +17,20 @@ def dimension_validation(arr1, arr2):
 
 
 @njit
+def discrete_cross_correlation(arr1: np.array, arr2: np.array):
+    # array_validation(arr1)
+    # array_validation(arr2)
+    # dimension_validation(arr1, arr2)
+    n = arr1.shape[0]
+
+    conv_arr = np.zeros_like(arr1)
+    for k in range(n):
+        for i in range(n):
+            conv_arr[k] += arr1[i] * arr2[(i + k) % n]
+    return conv_arr
+
+
+@njit
 def discrete_convolution(arr1: np.array, arr2: np.array):
     # array_validation(arr1)
     # array_validation(arr2)
@@ -72,12 +86,12 @@ def cost_function(samples, predictions):
 
 @njit
 def scipy_get_cost(x0: np.ndarray, distributions, samples_size, dimension_size):
-    input = x0.reshape((samples_size, dimension_size))
+    variables = x0.reshape((samples_size, dimension_size))
 
-    cost = 0
+    cost = 0.
     for j in range(samples_size):
         for i in range(j):
-            term = distributions[i, j] - discrete_convolution(input[i], input[j])
+            term = distributions[i, j] - discrete_convolution(variables[i], variables[j])
             cost += np.linalg.norm(term) ** 2
 
     return cost
@@ -90,7 +104,7 @@ def scipy_constraints(sample_size, dimensions):
         constraints.append({'type': 'eq', 'fun': lambda x0, i=i, dimensions=dimensions: np.sum(
             x0[dimensions * i: dimensions * i + dimensions]) - 1})
 
-    constraints.append({'type': 'ineq', 'fun': lambda x0: x0})
+    constraints.append({'type': 'ineq', 'fun': lambda x0: x0 + 1})
 
     return constraints
 
@@ -105,24 +119,32 @@ def get_distributions_from_noisy_samples(noisy_samples, samples, dimension):
 
     return distributions
 
-def solve_measure_sync_scipy(noisy_samples):
+
+def stupid_solution(noisy_samples):
     assert len(noisy_samples.shape) == 2
 
     samples = noisy_samples.shape[0]
     dimension = noisy_samples.shape[1]
-
-    distributions = get_distributions_from_noisy_samples(noisy_samples, samples, dimension)
 
     # initial guess
     row_max_indices = np.argmax(noisy_samples, axis=1)
     wrong_guesses = np.zeros((samples, dimension))
     wrong_guesses[np.arange(samples), row_max_indices] = 1
 
-    x0 = wrong_guesses.reshape((samples * dimension))
+    return wrong_guesses
+
+
+def solve_measure_sync_scipy(distributions, guesses=None):
+    assert len(distributions.shape) == 3
+
+    samples = distributions.shape[0]
+    samples2 = distributions.shape[1]
+    assert samples == samples2
+    dimension = distributions.shape[2]
 
     constraints = scipy_constraints(samples, dimension)
-    return scipy.optimize.minimize(scipy_get_cost, x0, args=(distributions, samples, dimension),
-                                   constraints=constraints)
+    return scipy.optimize.minimize(scipy_get_cost, guesses, args=(distributions, samples, dimension),
+                                   constraints=constraints, options={'maxiter': 1000})
 
 
 def solve_measure_sync(noisy_samples):
