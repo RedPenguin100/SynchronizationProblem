@@ -4,13 +4,13 @@ from numba import njit
 
 class Problem:
     mra = "mra"
-    rotation2d = "rotation2d"
+    rotation = "rotation2d"
 
 
 def get_projection(X, d=3, problem=Problem.mra):
     if problem == Problem.mra:
         return get_mra_projection(X)
-    if problem == Problem.rotation2d:
+    if problem == Problem.rotation:
         return get_so_projection(X, d)
     raise NotImplemented()
 
@@ -73,7 +73,7 @@ def _get_minimizer_mra(expected, actual):
 def get_minimizer(expected, actual, problem):
     if problem == Problem.mra:
         return _get_minimizer_mra(expected, actual)
-    if problem == Problem.rotation2d:
+    if problem == Problem.rotation:
         return _get_minimizer_so(expected, actual)
     raise ValueError("Unknown problem ", problem)
 
@@ -86,7 +86,7 @@ def _get_minimizer_so(expected, actual):
     return get_so_projection(actual.T @ expected, d)
 
 
-def get_error(expected, actual, dim, problem=Problem.rotation2d):
+def get_error(expected, actual, dim, problem=Problem.rotation):
     # Validation logic
     assert expected.shape == actual.shape, "Dimension mismatch!"
     assert len(expected.shape) == 3
@@ -95,13 +95,18 @@ def get_error(expected, actual, dim, problem=Problem.rotation2d):
     assert d2 == dim
 
     # Error retrieving logic
-    Q = get_minimizer(expected.conj(), actual, problem=Problem.rotation2d)
+    Q = get_minimizer(expected.conj(), actual, problem=problem)
     print("Q", Q)
     error = 0
+    outliers = 0
+    thresh = 1e-1
     for i in range(n):
         # The addition of `conj` to expected[i] is crucial for the complex case.
-        error += np.linalg.norm(expected[i] - actual[i] @ Q.conj()) ** 2
-
+        err_term = np.linalg.norm(expected[i] - actual[i] @ Q.conj()) ** 2
+        error += err_term
+        if err_term > thresh:
+            outliers += 1
+    print(f"Outliers = {outliers}")
     return error
 
 
@@ -145,19 +150,19 @@ def solve_sync_with_spectral(data, d, weights=None, problem=Problem.mra):
 
     w, v = np.linalg.eig(data)
     v_args = np.argsort(w)[-d:]
-    print("Before reshape: ", v[:, v_args])
+    # print("Before reshape: ", v[:, v_args])
     V_hat = v[:, v_args].reshape((n, d, d))
 
     R_hat = np.empty_like(V_hat)
 
-    if problem == Problem.rotation2d:
+    if problem == Problem.rotation:
         for i in range(n):
-            R_hat[i] = get_projection(V_hat[i], d, problem=Problem.rotation2d)
+            R_hat[i] = get_projection(V_hat[i], d, problem=Problem.rotation)
     elif problem == Problem.mra:
-        baseline = get_projection(V_hat[0], d, problem=Problem.rotation2d)
+        baseline = get_projection(V_hat[0], d, problem=Problem.rotation)
         base_inv = np.linalg.inv(baseline)  # This is so we can get to the MRA matrices.
         for i in range(n):
-            R_hat[i] = get_projection(get_projection(V_hat[i], d, problem=Problem.rotation2d) @ base_inv, d=d, problem=Problem.mra)
+            R_hat[i] = get_projection(get_projection(V_hat[i], d, problem=Problem.rotation) @ base_inv, d=d, problem=Problem.mra)
     else:
         raise ValueError(f"Unknown problem {problem}")
 
@@ -167,7 +172,7 @@ def solve_sync_with_spectral(data, d, weights=None, problem=Problem.mra):
 def truly_random_matrix(d, problem):
     if problem == Problem.mra:
         return truly_random_mra_matrix(d)
-    if problem == Problem.rotation2d:
+    if problem == Problem.rotation:
         return truly_random_so_matrix(d)
     return None
 

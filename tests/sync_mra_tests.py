@@ -107,13 +107,15 @@ def test_sync_mra_shift_invariant(n, d):
 @pytest.mark.parametrize('times', list(range(10)))
 @pytest.mark.parametrize('sigma', [
     # 0.,
-    0.1,
-    0.2,
-    0.3,
-    # 0.4
+    # 0.1,
+    # 0.2,
+    # 0.3,
+    # 0.4,
+    0.5
 ])
 def test_sync_mra_with_measure_setting(sigma, times):
-    dimension = 3
+    np.random.seed(times)
+    dimension = 5
     samples = 15
 
     x = np.zeros(dimension)
@@ -134,18 +136,19 @@ def test_sync_mra_with_measure_setting(sigma, times):
             else:
                 corr = discrete_cross_correlation(noisy_samples[i], noisy_samples[j])
                 n_roll = np.argmax(corr)
-                print("Samples: {}, {}".format(noisy_samples[i], noisy_samples[j]))
-                print("Roll matrix: ", dimension - n_roll)
+                # print("Samples: {}, {}".format(noisy_samples[i], noisy_samples[j]))
+                # print("Roll matrix: ", dimension - n_roll)
                 B[d * i: d * (i + 1), d * j: d * (j + 1)] = get_n_roll_matrix(dimension, dimension - n_roll)
 
 
     V = np.vstack([get_n_roll_matrix(dimension,  shift) for shift in shifts])
-    print(B.shape)
+    # print(B.shape)
     R_hat = solve_sync_with_spectral(B, dimension, problem=Problem.mra)
     V = V.reshape((samples, dimension, dimension))
-    print("B", B)
-    print("V", V)
-
-    print(R_hat)
-    assert 0 == pytest.approx(get_error(R_hat, V, dimension, problem=Problem.mra), )
+    # print("B", B)
+    # print("V", V)
+    #
+    # print(R_hat)
+    total_error = get_error(R_hat, V, dimension, problem=Problem.mra)
+    assert 0 == pytest.approx(total_error, )
     # noisy samples is [g_1, g_2, g_3, ..., g_n]

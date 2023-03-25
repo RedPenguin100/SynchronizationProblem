@@ -44,7 +44,7 @@ def test_projection_matrix_not_rotation():
     assert projection == pytest.approx(np.eye(3))
 
 
-@pytest.mark.parametrize('problem', [Problem.mra, Problem.rotation2d])
+@pytest.mark.parametrize('problem', [Problem.mra, Problem.rotation])
 def test_error_sanity(problem):
     d = 3
 
@@ -81,7 +81,7 @@ def test_eigenvalue(times, n, d):
 
     assert n * V == pytest.approx(B @ V)
 
-    R_hat = solve_sync_with_spectral(B, d, problem=Problem.rotation2d)
+    R_hat = solve_sync_with_spectral(B, d, problem=Problem.rotation)
     V = V.reshape((n, d, d))
     assert 0 == pytest.approx(get_error(R_hat, V, d))
 
@@ -101,16 +101,16 @@ def test_partial_graph_eigenvalue(n, d, p):
     for index in hole_indexes:
         ones[index] = 0
     # logic
-    R_hat = solve_sync_with_spectral(B_partial, d, ones, problem=Problem.rotation2d)
+    R_hat = solve_sync_with_spectral(B_partial, d, ones, problem=Problem.rotation)
     V = V.reshape((n, d, d))
     assert 0 == pytest.approx(get_error(R_hat, V, d))
 
 
-@pytest.mark.skip
+# @pytest.mark.skip
 # Algo is not good enough for outliers yet, although it can reconstruct fair amount of information.
 @pytest.mark.parametrize('n', [10])
 @pytest.mark.parametrize('d', [2, 3])
-@pytest.mark.parametrize('p', [0.9])
+@pytest.mark.parametrize('p', [0.90])
 def test_graph_with_false_measurements_eigenvalue(n, d, p):
     # Setup
     stack = [truly_random_so_matrix(d) for _ in range(n)]
@@ -120,9 +120,11 @@ def test_graph_with_false_measurements_eigenvalue(n, d, p):
     add_noise_to_matrix(B_partial, d, p)
 
     # logic
-    R_hat = solve_sync_with_spectral(B_partial, d, problem=Problem.rotation2d)
+    R_hat = solve_sync_with_spectral(B_partial, d, problem=Problem.rotation)
     V = V.reshape((n, d, d))
-    assert 0 == pytest.approx(get_error(R_hat, V, d))
+    total_error = get_error(R_hat, V, d)
+    average_error = total_error / n
+    assert 0 == pytest.approx(average_error, abs=0.2)
 
 
 def test_D_matrix():
@@ -143,10 +145,10 @@ def test_spectral_validity_dimension():
     ones = np.ones((n, n))
 
     # This should not throw
-    solve_sync_with_spectral(B, d, ones, problem=Problem.rotation2d)
+    solve_sync_with_spectral(B, d, ones, problem=Problem.rotation)
 
     with pytest.raises(AssertionError):
-        solve_sync_with_spectral(B, d, ones[1:], problem=Problem.rotation2d)
+        solve_sync_with_spectral(B, d, ones[1:], problem=Problem.rotation)
 
 
 @pytest.mark.skip

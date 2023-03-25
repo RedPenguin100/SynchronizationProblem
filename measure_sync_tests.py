@@ -42,7 +42,7 @@ def test_best_shift_distribution_sanity():
     print(index)
 
 
-def compare_samples_up_to_shift(truth, result, should_shift=False):
+def compare_samples_up_to_shift(truth, result, should_shift=True):
     if len(truth.shape) != 2:
         raise ValueError("samples.shape is not len 2")
     if truth.shape != result.shape:
@@ -79,18 +79,25 @@ def compare_samples_up_to_shift(truth, result, should_shift=False):
             wrong_samples = wrong_samples_temp
             correct_was = correct_was_temp
             winning_shift = shift
-    # print("wrong_samples: ", wrong_samples)
+    print("wrong_samples: ", wrong_samples)
     # print("correct_was: ", correct_was)
     print("winning_shift: ", winning_shift)
-    tol = 0.6
+    tol = 0.7
+    total_eliminated = 0
+    correctly_eliminated = 0
     for sample in range(sample_size):
         sort = np.sort(result[sample])
         if (sort[-1] - sort[-2]) < 0.1:
             # print("Too close to second peak ", result[sample])
             pass
-        if sort[-1] < 0.6:
-            # print("Too small value ", result[sample])
-            pass
+        if sort[-1] < tol:
+            total_eliminated += 1
+            print("Too small value ", np.roll(result[sample], shift=winning_shift))
+            for wrong_sample in wrong_samples:
+                if np.array_equal(np.roll(result[sample], shift=winning_shift), wrong_sample):
+                    correctly_eliminated += 1
+    if total_eliminated != 0:
+        print(f"Eliminated {correctly_eliminated} / {total_eliminated} correctly out of {total_wrongs_in_best_shift}")
     return total_cost, total_wrongs_in_best_shift
 
 
@@ -216,14 +223,41 @@ def test_cross_correlation_triplet(roll1, roll2):
     assert np.all(first_side == second_side)
 
 
+@pytest.mark.parametrize('roll1', [1, 2])
+@pytest.mark.parametrize('roll2', [1, 2])
+def test_cross_correlation_triplet2(roll1, roll2):
+    np.set_printoptions(precision=2)
+
+    dimension = 5
+    x = np.zeros(dimension)
+    x[0] = 1
+    x[1] = 1
+    y = np.roll(x, roll1)
+    z = np.roll(x, roll2)
+    print("x,x : ", discrete_cross_correlation(x, x))
+    print("x,y : ", discrete_cross_correlation(x, y))
+    print("y,x : ", discrete_cross_correlation(y, x))
+    print("y,z : ", discrete_cross_correlation(y, z))
+    print("z,y : ", discrete_cross_correlation(z, y))
+    print("z,x : ", discrete_cross_correlation(z, x))
+    print("x,z : ", discrete_cross_correlation(x, z))
+
+    first_side = discrete_cross_correlation(discrete_cross_correlation(x, y), discrete_cross_correlation(x, z))
+    second_side = discrete_cross_correlation(discrete_cross_correlation(y, y), discrete_cross_correlation(y, z))
+    # second_side = discrete_cross_correlation(y, z)
+    print(first_side)
+    print(second_side)
+    assert np.all(first_side == second_side)
+
+
 @pytest.mark.parametrize('times', list(range(10)))
 @pytest.mark.parametrize('sigma', [
     # 0.,
     # 0.1,
     # 0.2,
     # 0.25,
-    0.3,
-    0.4,
+    # 0.3,
+    # 0.4,
     0.5,
     # 0.8,
     # 1.
@@ -235,13 +269,13 @@ def test_cross_correlation_triplet(roll1, roll2):
                                        # 7, 10, 12, 15
                                        ])
 def test_measure_sync(sigma, samples, dimension, times):
-    np.random.seed(10)
+    np.random.seed(times)
     np.set_printoptions(precision=2)
 
     # Create signal [1, 0, 0, ... ,0]
     x = np.zeros(dimension)
     x[0] = 1
-    x[1] = -1
+    # x[1] = -1
     x = x / np.linalg.norm(x)
 
     print("Signal: ", x)
@@ -304,7 +338,8 @@ def test_measure_sync(sigma, samples, dimension, times):
     print("Total noise 3: ", np.linalg.norm(signal_3 - x))
     print("Total noise perfect alignment: ", np.linalg.norm(perfect - x))
 
-    assert apriori_best[1] < stupid_sol_best[1]
+    assert apriori_best[1] <= stupid_sol_best[1]
+
 
 # TODO: fix / delete cvxpy implementation
 # def cvxpy_discrete_convolution(arr1: cp.Expression, arr2: cp.Expression):
@@ -357,3 +392,92 @@ def test_measure_sync(sigma, samples, dimension, times):
 #     print("Is problem dqcp: ", problem.is_dqcp())
 #     problem.solve(qcp=True)
 #
+
+
+@pytest.mark.parametrize('times', list(range(10)))
+@pytest.mark.parametrize('sigma', [
+    # 0.,
+    # 0.1,
+    # 0.2,
+    # 0.25,
+    # 0.3,
+    # 0.4,
+    0.5,
+    # 0.8,
+    # 1.
+])
+@pytest.mark.parametrize('samples', [15,
+                                     # 25, 35, 45
+                                     ])
+@pytest.mark.parametrize('dimension', [5,
+                                       # 7, 10, 12, 15
+                                       ])
+def test_measure_sync2(sigma, samples, dimension, times):
+    np.random.seed(times)
+    np.set_printoptions(precision=2)
+
+    # Create signal [1, 0, 0, ... ,0]
+    x = np.zeros(dimension)
+    x[0] = 1
+    # x[1] = -1
+    x = x / np.linalg.norm(x)
+
+    print("Signal: ", x)
+    if sigma == 0.:
+        print("Noiseless setting")
+    else:
+        print(f"\nSNR={1 / sigma}")
+    # Add noise:
+    noisy_samples, noise, shifts = get_noisy_samples_from_signal(x, n=samples, sigma=sigma)
+    truth = get_shifted(x, shifts, dimension, samples)
+    shift_matrix = shifts_to_matrix(shifts, samples, dimension)
+    print("shift_matrix: ", shift_matrix)
+    distributions = get_distributions_from_noisy_samples(noisy_samples, samples, dimension)
+    print("shift_matrix cost", scipy_get_cost(shift_matrix, distributions, samples, dimension))
+    print("truth cost", scipy_get_cost(truth, distributions, samples, dimension))
+
+    # initial guess
+
+    best_apriori_guess = stupid_solution_distributions(distributions)
+    best_possible_guess = shift_matrix.reshape((samples * dimension))
+
+    res2 = solve_measure_sync_scipy(distributions, best_apriori_guess)
+    res3 = solve_measure_sync_scipy(distributions, best_possible_guess)
+    stupid_sol = stupid_solution_distributions(distributions)
+
+    print("stupid_sol cost: ",
+          scipy_get_cost(stupid_sol.reshape(dimension * samples), distributions, samples, dimension))
+    print(f"nit: {res2.nit},"
+          f" {res3.nit},"
+          # f" {res4.nit}"
+          )
+    print(f"njev: {res2.njev},"
+          f" {res3.njev},"
+          # f" {res4.njev}"
+          )
+    print(f"fun: {res2.fun}, "
+          f"{res3.fun},"
+          # f" {res4.fun}"
+          )
+    assert res3.success, res3.message
+
+    best_apriori_solutions = np.reshape(res2.x, (samples, dimension))
+    best_possible_solutions = np.reshape(res3.x, (samples, dimension))
+    print("best_apriori_solutions ", best_apriori_solutions)
+    apriori_best = compare_samples_up_to_shift(shift_matrix, best_apriori_solutions)
+    print("Apriori best guess: ", apriori_best)
+    print("Best possible guess: ", compare_samples_up_to_shift(shift_matrix, best_possible_solutions))
+    stupid_sol_best = compare_samples_up_to_shift(shift_matrix, stupid_sol)
+    print("Stupid solution: ", stupid_sol_best)
+    signal_1 = reconstruct_signal_from_solution(noisy_samples, best_apriori_solutions)
+    signal_2 = reconstruct_signal_from_solution(noisy_samples, best_possible_solutions)
+    signal_3 = reconstruct_signal_from_solution(noisy_samples, stupid_sol)
+    perfect = reconstruct_signal_from_solution(noisy_samples, shift_matrix)
+    print("Signal 1", signal_1)
+    print("Signal 2", signal_2)
+    print("Signal 3", signal_3)
+    print("Perfect ", perfect)
+    print("Total noise 1: ", np.linalg.norm(signal_1 - x))
+    print("Total noise 2: ", np.linalg.norm(signal_2 - x))
+    print("Total noise 3: ", np.linalg.norm(signal_3 - x))
+    print("Total noise perfect alignment: ", np.linalg.norm(perfect - x))

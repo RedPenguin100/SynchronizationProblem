@@ -136,8 +136,15 @@ def scipy_constraints(sample_size, dimensions):
         # sum of x_i = 1
         constraints.append({'type': 'eq', 'fun': lambda x0, i=i, dimensions=dimensions: np.sum(
             x0[dimensions * i: dimensions * i + dimensions]) - 1})
+
+    # for i in range(sample_size):
+    #     # sum of x_i = 1
+    #     constraints.append({'type': 'eq', 'fun': lambda x0, i=i, dimensions=dimensions: np.linalg.norm(
+    #         x0[dimensions * i: dimensions * i + dimensions]) - 1})
+
     # x_i >= -1
-    constraints.append({'type': 'ineq', 'fun': lambda x0: x0 + 1})
+    # constraints.append({'type': 'ineq', 'fun': lambda x0: x0 + 1})
+    constraints.append({'type': 'ineq', 'fun': lambda x0: x0})
 
     return constraints
 
@@ -149,7 +156,7 @@ def get_distributions_from_noisy_samples(noisy_samples, samples, dimension):
         for i in range(j):
             # Cross correlation between signal and noisy shifted copies are stores as our samples.
             distributions[i, j, :] = discrete_cross_correlation(noisy_samples[i], noisy_samples[j])
-            distributions[i, j, :] /= np.linalg.norm(distributions[i, j, :])
+            distributions[i, j, :] /= np.max(distributions[i, j, :])
     return distributions
 
 
@@ -163,6 +170,23 @@ def stupid_solution(noisy_samples):
     row_max_indices = np.argmax(noisy_samples, axis=1)
     wrong_guesses = np.zeros((samples, dimension))
     wrong_guesses[np.arange(samples), row_max_indices] = 1
+
+    return wrong_guesses
+
+
+def stupid_solution_distributions(distributions):
+    assert len(distributions.shape) == 3
+
+    samples = distributions.shape[0]
+    samples2 = distributions.shape[1]
+    assert samples == samples2
+    dimension = distributions.shape[2]
+
+    wrong_guesses = np.zeros((samples, dimension))
+    wrong_guesses[0, 0] = 1
+    for j in range(1, samples):
+        index = np.argmax(distributions[0, j])
+        wrong_guesses[j, dimension - index - 1] = 1
 
     return wrong_guesses
 
