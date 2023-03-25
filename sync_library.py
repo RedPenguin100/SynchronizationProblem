@@ -2,6 +2,49 @@ import numpy as np
 from numba import njit
 
 
+class Problem:
+    mra = "mra"
+    rotation2d = "rotation2d"
+
+
+def get_projection(X, d=3, problem=Problem.mra):
+    if problem == Problem.mra:
+        return get_mra_projection(X)
+    if problem == Problem.rotation2d:
+        return get_so_projection(X, d)
+    raise NotImplemented()
+
+
+@njit
+def get_n_roll_matrix(d, n):
+    mat = np.zeros((d, d))
+    for i in range(d):
+        mat[i, (i - n) % d] = 1  # Compatible with modulo numbers
+    return mat
+
+
+@njit
+def get_mra_projection(X):
+    shape = np.shape(X)
+    if len(shape) != 2:
+        raise ValueError("Shape should be 2-->matrix!")
+    d1, d = shape
+    if d1 != d:
+        raise ValueError("Matrix should be square!")
+
+    min_error = np.inf
+    min_matrix = None
+
+    for i in range(d):
+        mat = get_n_roll_matrix(d, i)
+        error = np.linalg.norm(X - mat)
+        if error < min_error:
+            min_error = error
+            min_matrix = mat
+
+    return min_matrix
+
+
 @njit
 def get_so_projection(X, d=3):
     """
@@ -19,7 +62,23 @@ def get_so_projection(X, d=3):
     return (U @ S) @ Vt
 
 
-def _get_minimizer(expected, actual):
+def _get_minimizer_mra(expected, actual):
+    n, d, d2 = expected.shape
+    expected = expected.reshape((n * d, d))
+    actual = actual.reshape((n * d, d))
+
+    return get_mra_projection(actual.T @ expected)
+
+
+def get_minimizer(expected, actual, problem):
+    if problem == Problem.mra:
+        return _get_minimizer_mra(expected, actual)
+    if problem == Problem.rotation2d:
+        return _get_minimizer_so(expected, actual)
+    raise ValueError("Unknown problem ", problem)
+
+
+def _get_minimizer_so(expected, actual):
     n, d, d2 = expected.shape
     expected = expected.reshape((n * d, d))
     actual = actual.reshape((n * d, d))
@@ -27,7 +86,7 @@ def _get_minimizer(expected, actual):
     return get_so_projection(actual.T @ expected, d)
 
 
-def get_error(expected, actual, dim):
+def get_error(expected, actual, dim, problem=Problem.rotation2d):
     # Validation logic
     assert expected.shape == actual.shape, "Dimension mismatch!"
     assert len(expected.shape) == 3
@@ -36,7 +95,8 @@ def get_error(expected, actual, dim):
     assert d2 == dim
 
     # Error retrieving logic
-    Q = _get_minimizer(expected.conj(), actual)
+    Q = get_minimizer(expected.conj(), actual, problem=Problem.rotation2d)
+    print("Q", Q)
     error = 0
     for i in range(n):
         # The addition of `conj` to expected[i] is crucial for the complex case.
@@ -60,7 +120,7 @@ def create_d_matrix(d: int, weights: np.ndarray):
     return D
 
 
-def solve_sync_with_spectral(data, d, weights=None):
+def solve_sync_with_spectral(data, d, weights=None, problem=Problem.mra):
     """
     :param data: Graph matrix containing description of all nodes
     :param d: Dimension of rotation
@@ -76,7 +136,7 @@ def solve_sync_with_spectral(data, d, weights=None):
         assert weights.shape == (n, n)
 
     for i in range(n):
-        assert np.isclose(data[i, i], 1)
+        assert np.abs(data[i, i] - 1) < 1e-8
 
     # Actual derivation
     if weights is not None:
@@ -85,14 +145,38 @@ def solve_sync_with_spectral(data, d, weights=None):
 
     w, v = np.linalg.eig(data)
     v_args = np.argsort(w)[-d:]
+    print("Before reshape: ", v[:, v_args])
     V_hat = v[:, v_args].reshape((n, d, d))
 
-    R_hat = np.copy(V_hat)
+    R_hat = np.empty_like(V_hat)
 
-    # TODO: get projection, check if this is really problem
-    for i in range(n):
-        R_hat[i] = get_so_projection(V_hat[i], d)
+    if problem == Problem.rotation2d:
+        for i in range(n):
+            R_hat[i] = get_projection(V_hat[i], d, problem=Problem.rotation2d)
+    elif problem == Problem.mra:
+        baseline = get_projection(V_hat[0], d, problem=Problem.rotation2d)
+        base_inv = np.linalg.inv(baseline)  # This is so we can get to the MRA matrices.
+        for i in range(n):
+            R_hat[i] = get_projection(get_projection(V_hat[i], d, problem=Problem.rotation2d) @ base_inv, d=d, problem=Problem.mra)
+    else:
+        raise ValueError(f"Unknown problem {problem}")
+
     return R_hat
+
+
+def truly_random_matrix(d, problem):
+    if problem == Problem.mra:
+        return truly_random_mra_matrix(d)
+    if problem == Problem.rotation2d:
+        return truly_random_so_matrix(d)
+    return None
+
+
+@njit
+def truly_random_mra_matrix(d):
+    roll = np.random.randint(d)
+    print("roll=", roll)
+    return get_n_roll_matrix(d, roll)
 
 
 @njit

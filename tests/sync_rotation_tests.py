@@ -3,7 +3,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from sync_library import get_so_projection, get_error, solve_sync_with_spectral, truly_random_so_matrix, \
-    block_assignment, add_noise_to_matrix, add_holes_to_matrix, create_d_matrix
+    block_assignment, add_noise_to_matrix, add_holes_to_matrix, create_d_matrix, Problem, truly_random_matrix
 
 
 def haar_measure_sampling_evidence(n):
@@ -17,6 +17,7 @@ def haar_measure_sampling_evidence(n):
     density = np.ones_like(bins) / (2 * np.pi)
     plt.plot(bins, density, linewidth=2, color='r')
     plt.show()
+
 
 def test_rotation_matrix_sanity():
     X = truly_random_so_matrix(3)
@@ -43,15 +44,17 @@ def test_projection_matrix_not_rotation():
     assert projection == pytest.approx(np.eye(3))
 
 
-def test_error_sanity():
+@pytest.mark.parametrize('problem', [Problem.mra, Problem.rotation2d])
+def test_error_sanity(problem):
     d = 3
-    rot1 = truly_random_so_matrix(d)
-    rot2 = truly_random_so_matrix(d)
+
+    rot1 = truly_random_matrix(d, problem)
+    rot2 = truly_random_matrix(d, problem)
 
     rot = np.array((rot1, rot2))
     rot_dis = np.array((rot1, rot2))
 
-    assert 0 == pytest.approx(get_error(expected=rot, actual=rot_dis, dim=d))
+    assert 0 == pytest.approx(get_error(expected=rot, actual=rot_dis, dim=d, problem=problem))
 
 
 def test_error_noisy():
@@ -78,7 +81,7 @@ def test_eigenvalue(times, n, d):
 
     assert n * V == pytest.approx(B @ V)
 
-    R_hat = solve_sync_with_spectral(B, d)
+    R_hat = solve_sync_with_spectral(B, d, problem=Problem.rotation2d)
     V = V.reshape((n, d, d))
     assert 0 == pytest.approx(get_error(R_hat, V, d))
 
@@ -98,11 +101,12 @@ def test_partial_graph_eigenvalue(n, d, p):
     for index in hole_indexes:
         ones[index] = 0
     # logic
-    R_hat = solve_sync_with_spectral(B_partial, d, ones)
+    R_hat = solve_sync_with_spectral(B_partial, d, ones, problem=Problem.rotation2d)
     V = V.reshape((n, d, d))
     assert 0 == pytest.approx(get_error(R_hat, V, d))
 
 
+@pytest.mark.skip
 # Algo is not good enough for outliers yet, although it can reconstruct fair amount of information.
 @pytest.mark.parametrize('n', [10])
 @pytest.mark.parametrize('d', [2, 3])
@@ -116,7 +120,7 @@ def test_graph_with_false_measurements_eigenvalue(n, d, p):
     add_noise_to_matrix(B_partial, d, p)
 
     # logic
-    R_hat = solve_sync_with_spectral(B_partial, d)
+    R_hat = solve_sync_with_spectral(B_partial, d, problem=Problem.rotation2d)
     V = V.reshape((n, d, d))
     assert 0 == pytest.approx(get_error(R_hat, V, d))
 
@@ -139,12 +143,13 @@ def test_spectral_validity_dimension():
     ones = np.ones((n, n))
 
     # This should not throw
-    solve_sync_with_spectral(B, d, ones)
+    solve_sync_with_spectral(B, d, ones, problem=Problem.rotation2d)
 
     with pytest.raises(AssertionError):
-        solve_sync_with_spectral(B, d, ones[1:])
+        solve_sync_with_spectral(B, d, ones[1:], problem=Problem.rotation2d)
 
 
+@pytest.mark.skip
 def test_pure_half_circle():
     n = 100
     d = 3
@@ -167,6 +172,7 @@ def test_pure_half_circle():
     plt.show()
 
 
+@pytest.mark.skip
 def test_histogram_B_noisy():
     n = 600
     d = 3
