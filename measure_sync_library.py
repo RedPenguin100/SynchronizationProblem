@@ -1,7 +1,8 @@
 import numpy as np
+import numba as nb
 import numpy.typing as npt
 import scipy
-from numba import njit
+from numba import njit, generated_jit
 
 from sklearn import linear_model
 
@@ -14,20 +15,6 @@ def array_validation(arr):
 @njit
 def dimension_validation(arr1, arr2):
     assert arr1.shape == arr2.shape
-
-
-@njit
-def discrete_cross_correlation(arr1: np.array, arr2: np.array):
-    # array_validation(arr1)
-    # array_validation(arr2)
-    # dimension_validation(arr1, arr2)
-    n = arr1.shape[0]
-
-    conv_arr = np.zeros_like(arr1)
-    for k in range(n):
-        for i in range(n):
-            conv_arr[k] += arr1[i] * arr2[(i + k) % n]
-    return conv_arr
 
 
 @njit
@@ -66,8 +53,8 @@ def discrete_cross_correlation(arr1: np.array, arr2: np.array):
        -->
            -->
     """
-    array_validation(arr1)
-    array_validation(arr2)
+    # array_validation(arr1)
+    # array_validation(arr2)
     # dimension_validation(arr1, arr2)
     n = arr1.shape[0]
 
@@ -104,6 +91,28 @@ def solve_best_shift(arr1: np.array, arr2: np.array):
     return argmin
 
 
+# @njit
+# def scipy_get_cost(x0: np.ndarray, distributions, samples_size, dimension_size):
+#     variables = x0.reshape((samples_size, dimension_size))
+#
+#     cost = 0.
+#     for j in range(samples_size):
+#         for i in range(j):
+#             term = distributions[i, j] - discrete_cross_correlation(variables[i], variables[j])
+#             cost += np.linalg.norm(term)
+
+# # Internal consistency condition
+# for x in range(samples_size):
+#     for y in range(x):
+#         for z in range(y):
+#             v1 = discrete_cross_correlation(variables[z], variables[y])
+#             v2 = discrete_cross_correlation(variables[x], variables[y])
+#             v3 = discrete_cross_correlation(variables[y], variables[x])
+#             v4 = discrete_cross_correlation(variables[y], variables[z])
+#             term1 = discrete_cross_correlation(v1, v2)
+#             term2 = discrete_cross_correlation(v3, v4)
+#             cost += np.linalg.norm(term1 - term2) ** 2
+
 @njit
 def scipy_get_cost(x0: np.ndarray, distributions, samples_size, dimension_size):
     variables = x0.reshape((samples_size, dimension_size))
@@ -113,19 +122,6 @@ def scipy_get_cost(x0: np.ndarray, distributions, samples_size, dimension_size):
         for i in range(j):
             term = distributions[i, j] - discrete_cross_correlation(variables[i], variables[j])
             cost += np.linalg.norm(term)
-
-    # # Internal consistency condition
-    # for x in range(samples_size):
-    #     for y in range(x):
-    #         for z in range(y):
-    #             v1 = discrete_cross_correlation(variables[z], variables[y])
-    #             v2 = discrete_cross_correlation(variables[x], variables[y])
-    #             v3 = discrete_cross_correlation(variables[y], variables[x])
-    #             v4 = discrete_cross_correlation(variables[y], variables[z])
-    #             term1 = discrete_cross_correlation(v1, v2)
-    #             term2 = discrete_cross_correlation(v3, v4)
-    #             cost += np.linalg.norm(term1 - term2) ** 2
-
     return cost
 
 
@@ -134,8 +130,10 @@ def scipy_constraints(sample_size, dimensions):
 
     for i in range(sample_size):
         # sum of x_i = 1
-        constraints.append({'type': 'eq', 'fun': lambda x0, i=i, dimensions=dimensions: np.sum(
-            x0[dimensions * i: dimensions * i + dimensions]) - 1})
+        var_start = i * dimensions
+        var_end = i * dimensions + dimensions
+        constraints.append({'type': 'eq', 'fun': lambda x0, var_end=var_end, var_start=var_start: np.sum(
+            x0[var_start: var_end]) - 1})
 
     # for i in range(sample_size):
     #     # sum of x_i = 1
@@ -151,12 +149,11 @@ def scipy_constraints(sample_size, dimensions):
 
 @njit
 def get_distributions_from_noisy_samples(noisy_samples, samples, dimension):
-    distributions = np.zeros((samples, samples, dimension))
+    distributions = np.empty((samples, samples, dimension))
     for j in range(samples):
         for i in range(j):
             # Cross correlation between signal and noisy shifted copies are stores as our samples.
             distributions[i, j, :] = discrete_cross_correlation(noisy_samples[i], noisy_samples[j])
-            distributions[i, j, :] /= np.max(distributions[i, j, :])
     return distributions
 
 
@@ -202,7 +199,7 @@ def solve_measure_sync_scipy(distributions, guesses=None):
     constraints = scipy_constraints(samples, dimension)
     return scipy.optimize.minimize(scipy_get_cost, guesses, args=(distributions, samples, dimension),
                                    constraints=constraints,
-                                   options={'maxiter': 1000})
+                                   options={'maxiter': 1000, 'ftol': 1e-2})
 
 
 def solve_measure_sync(noisy_samples):

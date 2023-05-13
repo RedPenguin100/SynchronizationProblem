@@ -23,6 +23,14 @@ def get_n_roll_matrix(d, n):
     return mat
 
 
+def get_shift_vec_from_matrix(matrix):
+    assert len(matrix.shape) == 2
+    d = matrix.shape[0]
+    assert d == matrix.shape[1]
+    n_roll_matrix = get_mra_projection(matrix)
+    return np.array(np.flip(n_roll_matrix[0]), dtype=np.float)
+
+
 @njit
 def get_mra_projection(X):
     shape = np.shape(X)
@@ -107,7 +115,7 @@ def get_error(expected, actual, dim, problem=Problem.rotation):
         if err_term > thresh:
             outliers += 1
     print(f"Outliers = {outliers}")
-    return error
+    return error, outliers
 
 
 @njit
@@ -162,7 +170,8 @@ def solve_sync_with_spectral(data, d, weights=None, problem=Problem.mra):
         baseline = get_projection(V_hat[0], d, problem=Problem.rotation)
         base_inv = np.linalg.inv(baseline)  # This is so we can get to the MRA matrices.
         for i in range(n):
-            R_hat[i] = get_projection(get_projection(V_hat[i], d, problem=Problem.rotation) @ base_inv, d=d, problem=Problem.mra)
+            R_hat[i] = get_projection(get_projection(V_hat[i], d, problem=Problem.rotation) @ base_inv, d=d,
+                                      problem=Problem.mra)
     else:
         raise ValueError(f"Unknown problem {problem}")
 

@@ -106,11 +106,9 @@ def test_partial_graph_eigenvalue(n, d, p):
     assert 0 == pytest.approx(get_error(R_hat, V, d))
 
 
-# @pytest.mark.skip
-# Algo is not good enough for outliers yet, although it can reconstruct fair amount of information.
-@pytest.mark.parametrize('n', [10])
+@pytest.mark.parametrize('n', [100])
 @pytest.mark.parametrize('d', [2, 3])
-@pytest.mark.parametrize('p', [0.90])
+@pytest.mark.parametrize('p', [0.8])
 def test_graph_with_false_measurements_eigenvalue(n, d, p):
     # Setup
     stack = [truly_random_so_matrix(d) for _ in range(n)]
@@ -124,7 +122,7 @@ def test_graph_with_false_measurements_eigenvalue(n, d, p):
     V = V.reshape((n, d, d))
     total_error = get_error(R_hat, V, d)
     average_error = total_error / n
-    assert 0 == pytest.approx(average_error, abs=0.2)
+    assert 0 == pytest.approx(average_error, abs=0.02)
 
 
 def test_D_matrix():

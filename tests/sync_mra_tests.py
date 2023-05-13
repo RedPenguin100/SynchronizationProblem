@@ -1,13 +1,20 @@
+import json
+import os
+
 import pytest
 import numpy as np
 from matplotlib import pyplot as plt
 from numba import njit
+from directories import DATA_SYNC_DIR
 
 from measure_sync_experiments import get_noisy_samples_from_signal
 from measure_sync_library import get_distributions_from_noisy_samples, discrete_convolution, discrete_cross_correlation
+from measure_sync_tests import shifts_to_matrix, reconstruct_signal_from_solution, compare_samples_up_to_shift, \
+    get_distance_mra
 from sync_library import get_so_projection, get_error, solve_sync_with_spectral, truly_random_so_matrix, \
     block_assignment, add_noise_to_matrix, add_holes_to_matrix, create_d_matrix, Problem, get_mra_projection, \
-    get_n_roll_matrix, truly_random_mra_matrix
+    get_n_roll_matrix, truly_random_mra_matrix, get_shift_vec_from_matrix
+from test_utils import OptAlgorithm, Setting, Results, Result
 
 
 def shift_permutation_by_n(X, n):
@@ -81,7 +88,7 @@ def test_sanity_sync_mra(n, d, times):
     V = V.reshape((n, d, d))
     print(V)
     print(R_hat)
-    assert 0.0 == pytest.approx(get_error(R_hat, V, d, problem=Problem.mra))
+    assert 0.0 == pytest.approx(get_error(R_hat, V, d, problem=Problem.mra)[0])
 
 
 @pytest.mark.parametrize('n', [10, 30, 50])
@@ -100,55 +107,99 @@ def test_sync_mra_shift_invariant(n, d):
     V2 = V2.reshape((n, d, d))
     print(V)
     print(R_hat)
-    assert 0 == pytest.approx(get_error(R_hat, V, d, problem=Problem.mra), )
-    assert 0 == pytest.approx(get_error(R_hat, V2, d, problem=Problem.mra), )
+    assert 0 == pytest.approx(get_error(R_hat, V, d, problem=Problem.mra)[0], )
+    assert 0 == pytest.approx(get_error(R_hat, V2, d, problem=Problem.mra)[0], )
 
 
-@pytest.mark.parametrize('times', list(range(10)))
+@pytest.mark.parametrize('dimension', [5, 10, 15])
+@pytest.mark.parametrize('samples', [15, 25, 45, 70, 100])
 @pytest.mark.parametrize('sigma', [
-    # 0.,
-    # 0.1,
-    # 0.2,
-    # 0.3,
-    # 0.4,
+    0.,
+    0.1,
+    0.2,
+    0.3,
+    0.4,
     0.5
 ])
-def test_sync_mra_with_measure_setting(sigma, times):
-    np.random.seed(times)
-    dimension = 5
-    samples = 15
-
+def test_sync_mra_with_measure_setting(sigma, dimension, samples):
     x = np.zeros(dimension)
-    x[0] = 1
-    # x[1] = -1A
+    x[0] = 0.8804509063256238
+    x[1] = 0.4402254531628119
+    x[4] = 0.1760901812651248
 
-    x = x / np.linalg.norm(x)
+    opt_algorithm = OptAlgorithm.sync_mra
+    setting = Setting(sigma, samples, dimension, x, opt_algorithm)
+    errors = []
+    results = Results(setting)
+    result_path = os.path.join(DATA_SYNC_DIR, str(setting)) + ".json"
+    if os.path.exists(result_path):
+        pytest.skip("Experiment already executed")
 
-    noisy_samples, noise, shifts = get_noisy_samples_from_signal(x, n=samples, sigma=sigma)
+    def test_sync(setting, seed, verbose):
+        sigma = setting.sigma
+        dimension = setting.dimension
+        samples = setting.samples
+        x = setting.signal
 
-    B = np.empty((samples * dimension, samples * dimension))
+        np.random.seed(seed)
 
-    for i in range(samples):
-        for j in range(samples):
-            d = dimension
-            if i == j:
-                B[d * i: d * (i + 1), d * j: d * (j + 1)] = np.eye(d)
-            else:
-                corr = discrete_cross_correlation(noisy_samples[i], noisy_samples[j])
-                n_roll = np.argmax(corr)
-                # print("Samples: {}, {}".format(noisy_samples[i], noisy_samples[j]))
-                # print("Roll matrix: ", dimension - n_roll)
-                B[d * i: d * (i + 1), d * j: d * (j + 1)] = get_n_roll_matrix(dimension, dimension - n_roll)
+        noisy_samples, noise, shifts = get_noisy_samples_from_signal(x, n=samples, sigma=sigma)
+        shift_matrix = shifts_to_matrix(shifts, samples, dimension)
 
+        B = np.empty((samples * dimension, samples * dimension))
 
-    V = np.vstack([get_n_roll_matrix(dimension,  shift) for shift in shifts])
-    # print(B.shape)
-    R_hat = solve_sync_with_spectral(B, dimension, problem=Problem.mra)
-    V = V.reshape((samples, dimension, dimension))
-    # print("B", B)
-    # print("V", V)
-    #
-    # print(R_hat)
-    total_error = get_error(R_hat, V, dimension, problem=Problem.mra)
-    assert 0 == pytest.approx(total_error, )
-    # noisy samples is [g_1, g_2, g_3, ..., g_n]
+        for i in range(samples):
+            for j in range(samples):
+                d = dimension
+                if i == j:
+                    B[d * i: d * (i + 1), d * j: d * (j + 1)] = np.eye(d)
+                else:
+                    corr = discrete_cross_correlation(noisy_samples[i], noisy_samples[j])
+                    n_roll = np.argmax(corr)
+                    # print("Samples: {}, {}".format(noisy_samples[i], noisy_samples[j]))
+                    # print("Roll matrix: ", dimension - n_roll)
+                    B[d * i: d * (i + 1), d * j: d * (j + 1)] = get_n_roll_matrix(dimension, dimension - n_roll)
+
+        V = np.vstack([get_n_roll_matrix(dimension, shift) for shift in shifts])
+        # print(B.shape)
+        R_hat = solve_sync_with_spectral(B, dimension, problem=Problem.mra)
+        V = V.reshape((samples, dimension, dimension))
+        # print("B", B)
+        # print("V", V)
+        #
+        # print(R_hat)
+        total_error, outliers = get_error(R_hat, V, dimension, problem=Problem.mra)
+        print("Average error:", total_error / samples)
+
+        print("r0", R_hat[0])
+        print("r1", R_hat[1])
+        solution = np.zeros_like(shift_matrix)
+        for i in range(samples):
+            solution[i] = get_shift_vec_from_matrix(R_hat[i])
+        print(solution.shape)
+        print(len(solution.shape))
+        print(shift_matrix.shape)
+        signal_1 = reconstruct_signal_from_solution(noisy_samples, solution)
+        print("Signal 1", signal_1)
+        reconstruction_error = get_distance_mra(x, signal_1)
+        print(reconstruction_error)
+        # noisy samples is [g_1, g_2, g_3, ..., g_n]
+        return Result(outliers, reconstruction_error)
+
+    # Run tests
+    for i in range(20):
+        try:
+            result = test_sync(setting, seed=i, verbose=False)
+            results.add_result(result)
+        except Exception as e:
+            errors.append(e)
+            print("Encountered error:", e)
+
+    print("Done execution")
+    print(f"Total errors: {len(errors)}")
+    results.print()
+    setting.print_summary()
+    results.setting.signal = list(results.setting.signal)
+    json_string = json.dumps(results, default=lambda x: x.__dict__, sort_keys=True, indent=4)
+    with open(result_path, 'w+') as f:
+        f.write(json_string)
