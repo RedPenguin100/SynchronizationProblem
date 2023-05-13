@@ -4,7 +4,6 @@ import json
 
 import pytest
 import numpy as np
-import cvxpy as cp
 import scipy.optimize
 
 from math_utils import average

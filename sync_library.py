@@ -28,7 +28,7 @@ def get_shift_vec_from_matrix(matrix):
     d = matrix.shape[0]
     assert d == matrix.shape[1]
     n_roll_matrix = get_mra_projection(matrix)
-    return np.array(np.flip(n_roll_matrix[0]), dtype=np.float)
+    return np.array(np.flip(n_roll_matrix[0]), dtype=np.float64)
 
 
 @njit
