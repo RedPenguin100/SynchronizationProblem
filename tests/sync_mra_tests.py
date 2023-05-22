@@ -14,7 +14,7 @@ from measure_sync_tests import shifts_to_matrix, reconstruct_signal_from_solutio
 from sync_library import get_so_projection, get_error, solve_sync_with_spectral, truly_random_so_matrix, \
     block_assignment, add_noise_to_matrix, add_holes_to_matrix, create_d_matrix, Problem, get_mra_projection, \
     get_n_roll_matrix, truly_random_mra_matrix, get_shift_vec_from_matrix
-from test_utils import OptAlgorithm, Setting, Results, Result
+from test_utils import OptAlgorithm, Setting, Experiment, Result
 
 
 def shift_permutation_by_n(X, n):
@@ -130,7 +130,7 @@ def test_sync_mra_with_measure_setting(sigma, dimension, samples):
     opt_algorithm = OptAlgorithm.sync_mra
     setting = Setting(sigma, samples, dimension, x, opt_algorithm)
     errors = []
-    results = Results(setting)
+    results = Experiment(setting)
     result_path = os.path.join(DATA_SYNC_DIR, str(setting)) + ".json"
     if os.path.exists(result_path):
         pytest.skip("Experiment already executed")

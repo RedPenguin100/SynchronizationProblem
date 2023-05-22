@@ -1,10 +1,6 @@
 import numpy as np
-import numba as nb
-import numpy.typing as npt
 import scipy
-from numba import njit, generated_jit
-
-from sklearn import linear_model
+from numba import njit
 
 
 @njit
@@ -200,20 +196,3 @@ def solve_measure_sync_scipy(distributions, guesses=None):
     return scipy.optimize.minimize(scipy_get_cost, guesses, args=(distributions, samples, dimension),
                                    constraints=constraints,
                                    options={'maxiter': 1000, 'ftol': 1e-2})
-
-
-def solve_measure_sync(noisy_samples):
-    """
-    TODO: implement properly
-    """
-    assert len(noisy_samples.shape) == 2
-    samples = noisy_samples.shape[0]
-    signal_size = noisy_samples.shape[1]
-
-    distributions = np.zeros((samples, samples, signal_size))
-    for j in range(samples):
-        for i in range(j):
-            # Cross correlation between signal and noisy shifted copies are stores as our samples.
-            distributions[i, j, :] = discrete_convolution(noisy_samples[i], noisy_samples[j])
-
-    return distributions

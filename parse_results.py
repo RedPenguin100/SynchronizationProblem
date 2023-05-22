@@ -2,7 +2,7 @@ import json
 import os
 from typing import List
 
-from directories import DATA_DIR, DATA_SYNC_DIR
+from directories import DATA_DIR, DATA_SYNC_DIR, DATA_SYNC_DIR_OLD, DATA_DIR_OLD, DATA_STUPID_SOLUTION_DIR
 from math_utils import average
 import matplotlib.pyplot as plt
 
@@ -44,9 +44,13 @@ def plot_by_error(json_list, dimension, samples, algo, color, linestyle=None, fi
 
 
 def main():
-    json_list_measure = get_json_list(DATA_DIR)
-    json_list_sync = get_json_list(DATA_SYNC_DIR)
-    for result_measure, result_sync in zip(json_list_measure, json_list_sync):
+    json_list_stupid_solution = get_json_list(DATA_STUPID_SOLUTION_DIR)
+    json_list_measure_old = get_json_list(DATA_DIR_OLD)
+    json_list_sync_old = get_json_list(DATA_SYNC_DIR_OLD)
+    for result_stupid_solution, result_measure, result_sync in zip(json_list_stupid_solution, json_list_measure_old, json_list_sync_old):
+        wrong_samples_stupid_solution = result_stupid_solution['reconstruction_errors']
+        print("Stupid solution average wrong samples: ", average(wrong_samples_stupid_solution))
+
         wrong_samples = result_measure['reconstruction_errors']
         print("Measure Average wrong samples: ", average(wrong_samples))
 
@@ -55,39 +59,19 @@ def main():
 
     for dimension, color in [(5, "red"), (10, "green"), (15, "purple")]:
         for samples in [
-            # (15, "brown"),
-            # (25, "purple"),
-            45,
+            15,
+            # 25,
+            # 45,
             # 70,
             # 100
         ]:
-            plot_by_error(json_list_measure, dimension=dimension, samples=samples, algo='measure', color=color, linestyle='--', filter="reconstruction_errors")
-            plot_by_error(json_list_sync, dimension=dimension, samples=samples, algo='sync', color=color, filter="reconstruction_errors")
+            plot_by_error(json_list_measure_old, dimension=dimension, samples=samples, algo='measure', color=color, linestyle='--', filter="reconstruction_errors")
+            plot_by_error(json_list_sync_old, dimension=dimension, samples=samples, algo='sync', color=color, filter="reconstruction_errors")
+            plot_by_error(json_list_stupid_solution, dimension=dimension, samples=samples, algo='sync', linestyle='-.', color=color, filter="reconstruction_errors")
     plt.legend(loc='upper left')
     plt.show()
 
-def plot_by_samples():
-    json_list_measure = get_json_list(DATA_DIR)
-    json_list_sync = get_json_list(DATA_SYNC_DIR)
-    for result_measure, result_sync in zip(json_list_measure, json_list_sync):
-        wrong_samples = result_measure['wrong_samples']
-        print("Measure Average wrong samples: ", average(wrong_samples))
 
-        wrong_samples_sync = result_sync['wrong_samples']
-        print("Sync Average wrong samples: ", average(wrong_samples_sync))
-
-    for dimension, color in [(5, "red"), (10, "brown"), (15, "purple")]:
-        for samples in [
-            # (15, "brown"),
-            # (25, "purple"),
-            # (45, "black"),
-            # (70, "blue"),
-            100
-        ]:
-            plot_by_error(json_list_measure, dimension=dimension, samples=samples, algo='measure', color=None, linestyle='--')
-            plot_by_error(json_list_sync, dimension=dimension, samples=samples, algo='sync', color=None)
-    plt.legend(loc='upper left')
-    plt.show()
 
 
 if __name__ == "__main__":

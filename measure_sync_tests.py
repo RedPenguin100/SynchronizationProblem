@@ -11,7 +11,7 @@ from math_utils import average
 from directories import DATA_DIR
 from measure_sync_experiments import *
 from measure_sync_library import *
-from test_utils import OptAlgorithm, Result, Setting, Results
+from test_utils import OptAlgorithm, Result, Setting, Experiment
 
 
 def test_convolution():
@@ -286,6 +286,7 @@ def test_cross_correlation_commutativity(roll1, roll2):
     assert np.allclose(np.roll(np.flip(first_side), 1), second_side)
     assert np.allclose(np.flip(np.roll(first_side, 4)), second_side)
 
+
 @pytest.mark.skip("Re-evalutate this test")
 @pytest.mark.parametrize('times', list(range(10)))
 @pytest.mark.parametrize('sigma', [
@@ -378,68 +379,56 @@ def test_measure_sync(sigma, samples, dimension, times):
     assert apriori_best[1] <= stupid_sol_best[1]
 
 
-# TODO: fix / delete cvxpy implementation
-# def cvxpy_discrete_convolution(arr1: cp.Expression, arr2: cp.Expression):
-#     n = arr1.shape[0]
-#
-#     res = [arr1 @ arr2]
-#     for k in range(1, n):
-#         stack = cp.hstack([arr2[((n - k) % n):], arr2[:((n - k) % n)]])
-#         res.append(arr1 @ stack)
-#
-#     return res
-# def test_least_squares_solver():
-#     samples = 4
-#     dimension = 3
-#
-#     a = np.array([1.1, 0.1, 0.2], dtype=np.float64)
-#     b = np.array([0, 1, 0.2], dtype=np.float64)
-#     c = np.array([0, 0.1, 1], dtype=np.float64)
-#     d = np.array([0, 1, 0], dtype=np.float64)
-#
-#     sample_data = np.array([a, b, c, d])
-#     distributions = solve_measure_sync(sample_data)
-#
-#     vars = list()
-#     for i in range(samples):
-#         vars.append(cp.Variable(dimension, nonneg=True))
-#
-#     # constraints = [1 == np.inner(np.ones(samples), p[i]) for i in range(samples)]
-#     constraints = [cp.sum(var) == 1 for var in vars]
-#     constraints.extend([var >= 0 for var in vars])
-#
-#     print("")
-#
-#     cost = 0
-#     for j in range(samples):
-#         for i in range(j):
-#             cost_inner = 0
-#             variable_conv = cvxpy_discrete_convolution(vars[i], vars[j])
-#             for l in range(dimension):
-#                 term = cp.power((cp.Constant(distributions[i, j, l]) - variable_conv[l]), 2)
-#                 print("Is term something ", term.is_dqcp())
-#                 print("Is term something ", term.is_quasiconcave())
-#                 print("Is term something ", term.is_quasiconvex())
-#                 cost_inner += term
-#
-#             cost += cost_inner
-#     for constraint in constraints:
-#         print("Is constraint dqcp: ", constraint.is_dqcp())
-#     problem = cp.Problem(cp.Minimize(cost), constraints)
-#     print("Is problem dqcp: ", problem.is_dqcp())
-#     problem.solve(qcp=True)
-#
+def test_stupid_solution(setting, algorithm=None, seed=None, verbose=False, debug=False, distribution_cleaner=None):
+    if verbose:
+        print()
+    test_start = time.time()
 
+    sigma = setting.sigma
+    dimension = setting.dimension
+    samples = setting.samples
+    signal = setting.signal
+    if seed is not None:
+        np.random.seed(seed)
+    if signal is None:
+        raise ValueError("Signal is None")
 
+    x = signal
 
+    noisy_samples, noise, shifts = get_noisy_samples_from_signal(x, n=samples, sigma=sigma)
+    truth = get_shifted(signal, shifts, dimension, samples)
+    shift_matrix = shifts_to_matrix(shifts, samples, dimension)
+    flat_shift_matrix = shift_matrix.reshape((samples * dimension))
+    distributions = get_distributions_from_noisy_samples(noisy_samples, samples, dimension)
+    # -- Problem starts here --
+    if distribution_cleaner is not None:
+        distributions = distribution_cleaner(distributions)
 
+    if verbose:
+        # print("shift_matrix: ", shift_matrix)
+        print("shift_matrix cost", scipy_get_cost(flat_shift_matrix, distributions, samples, dimension))
+        print("truth cost", scipy_get_cost(truth.reshape((samples * dimension)), distributions, samples, dimension))
+
+    # initial guess
+    good_apriori_guess = stupid_solution_distributions(distributions)
+    best_guess_result = compare_samples_up_to_shift(shift_matrix, good_apriori_guess, debug=debug)
+    signal_1 = reconstruct_signal_from_solution(noisy_samples, good_apriori_guess)
+    print("Signal 1", signal_1)
+    reconstruction_error = get_distance_mra(x, signal_1)
+
+    test_end = time.time()
+
+    print(f"Test took: {test_end - test_start}")
+    return Result(best_guess_result[1], reconstruction_error, test_end - test_start, seed)
 
 
 def test_measure_generic(setting, algorithm=None, seed=None, verbose=False, debug=False,
                          distribution_cleaner=None):
     # printing
     np.set_printoptions(precision=2)
-    print()
+    if verbose:
+        print()
+    test_start = time.time()
 
     # Setup
     sigma = setting.sigma
@@ -528,7 +517,9 @@ def test_measure_generic(setting, algorithm=None, seed=None, verbose=False, debu
     print("Signal3: Get distance MRA: ", get_distance_mra(x, signal_3))
     print("Total noise perfect alignment: ", np.linalg.norm(perfect - x))
 
-    return Result(apriori_best[1], reconstruction_error)
+    test_end = time.time()
+
+    return Result(apriori_best[1], reconstruction_error, test_end - test_start, seed)
 
 
 @pytest.mark.parametrize('sigma', [
@@ -549,10 +540,11 @@ def test_measure_generic(setting, algorithm=None, seed=None, verbose=False, debu
     70,
     100
 ])
-@pytest.mark.parametrize('dimension', [5,
-                                       10,
-                                       15
-                                       ])
+@pytest.mark.parametrize('dimension', [
+    5,
+    10,
+    15
+])
 def test_measure_sync2(sigma, samples, dimension):
     np.random.seed(0)
     # Create signal
@@ -566,16 +558,16 @@ def test_measure_sync2(sigma, samples, dimension):
     algorithm = OptAlgorithm.best_apriori
     setting = Setting(sigma, samples, dimension, signal, algorithm)
     errors = []
-    results = Results(setting)
+    results = Experiment(setting)
     result_path = os.path.join(DATA_DIR, str(setting)) + ".json"
     if os.path.exists(result_path):
         pytest.skip("Experiment already executed")
 
-
+    experiment_count = 20
     # Run tests
-    for i in range(20):
+    for i in range(experiment_count):
         try:
-            result = test_measure_generic(setting, seed=i, verbose=True)
+            result = test_stupid_solution(setting, seed=i, verbose=True)
             results.add_result(result)
         except Exception as e:
             errors.append(e)

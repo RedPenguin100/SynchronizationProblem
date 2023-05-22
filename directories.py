@@ -6,4 +6,5 @@ DATA_DIR_OLD = os.path.join(PROJECT_ROOT, "data_measure_old")
 DATA_SYNC_DIR_OLD = os.path.join(PROJECT_ROOT, "data_sync_old")
 
 DATA_DIR = os.path.join(PROJECT_ROOT, "data_measure")
+DATA_STUPID_SOLUTION_DIR = os.path.join(PROJECT_ROOT, "data_stupid_solution")
 DATA_SYNC_DIR = os.path.join(PROJECT_ROOT, "data_sync")

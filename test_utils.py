@@ -43,22 +43,26 @@ class Setting:
 
 
 class Result:
-    def __init__(self, wrong_samples, reconstruction_error):
+    def __init__(self, wrong_samples, reconstruction_error, duration, seed=None):
         self.wrong_samples = wrong_samples
         self.reconstruction_error = reconstruction_error
+        self.duration = duration
+        self.seed = seed
 
 
-class Results:
+class Experiment:
     def __init__(self, setting):
         self.setting = setting
         self.wrong_samples = []
         self.reconstruction_errors = []
         self.timestamp = time.time()
+        self.total_duration = 0.
 
     def print(self, verbose=True):
         print(f"Wrong samples average: {average(self.wrong_samples)}")
         print(f"Average reconstruction error: {average(self.reconstruction_errors)}")
         print(f"Worst reconstruction error: {np.max(self.reconstruction_errors)}")
+        print(f"Total results duration: {self.total_duration}")
         if verbose:
             print("Wrong samples list:", self.wrong_samples)
             print("Apriori best wrongs:", self.reconstruction_errors)
@@ -66,3 +70,4 @@ class Results:
     def add_result(self, result: Result):
         self.wrong_samples.append(result.wrong_samples)
         self.reconstruction_errors.append(result.reconstruction_error)
+        self.total_duration += result.duration
