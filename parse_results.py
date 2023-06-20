@@ -2,9 +2,12 @@ import json
 import os
 from typing import List
 
-from directories import DATA_DIR, DATA_SYNC_DIR, DATA_SYNC_DIR_OLD, DATA_DIR_OLD, DATA_STUPID_SOLUTION_DIR
+from directories import DATA_DIR, DATA_SYNC_DIR, DATA_SYNC_DIR_OLD, DATA_DIR_OLD, DATA_STUPID_SOLUTION_DIR, \
+    DATA_MEASURE_BEST_APRIORI, DATA_PURE_RANDOM, DATA_MEASURE_BEST_APRIORI_UNSQUARED, get_unconfirmed_data_directory
 from math_utils import average
 import matplotlib.pyplot as plt
+
+from test_utils import ComparisonMetric
 
 
 def get_data_files(data_dir) -> List:
@@ -25,7 +28,7 @@ def get_json_list(data_dir):
     return data_file_contents
 
 
-def plot_by_error(json_list, dimension, samples, algo, color, linestyle=None, filter=None):
+def plot_by_error(json_list, dimension, samples, algo, color=None, linestyle=None, filter=None):
     if filter is None:
         raise Exception("Need to pass filter!")
     filtered_jsons = []
@@ -40,38 +43,33 @@ def plot_by_error(json_list, dimension, samples, algo, color, linestyle=None, fi
     for filtered in filtered_jsons:
         sigma_values.append(filtered['setting']['sigma'])
         average_error.append(average(filtered[filter]))
-    plt.plot(sigma_values, average_error, label=f"N={samples}, d={dimension}, alg={algo}", color=color, linestyle=linestyle)
+    plt.plot(sigma_values, average_error, label=f"N={samples}, d={dimension}, alg={algo}", color=color,
+             linestyle=linestyle)
 
 
 def main():
-    json_list_stupid_solution = get_json_list(DATA_STUPID_SOLUTION_DIR)
-    json_list_measure_old = get_json_list(DATA_DIR_OLD)
-    json_list_sync_old = get_json_list(DATA_SYNC_DIR_OLD)
-    for result_stupid_solution, result_measure, result_sync in zip(json_list_stupid_solution, json_list_measure_old, json_list_sync_old):
-        wrong_samples_stupid_solution = result_stupid_solution['reconstruction_errors']
-        print("Stupid solution average wrong samples: ", average(wrong_samples_stupid_solution))
+    comparison_metric = ComparisonMetric.reconstruction_errors
 
-        wrong_samples = result_measure['reconstruction_errors']
-        print("Measure Average wrong samples: ", average(wrong_samples))
-
-        wrong_samples_sync = result_sync['reconstruction_errors']
-        print("Sync Average wrong samples: ", average(wrong_samples_sync))
-
-    for dimension, color in [(5, "red"), (10, "green"), (15, "purple")]:
+    experiment_names = ['pure_random', 'measure_best_apriori', 'sync_mra', 'stupid_solution']
+    json_list = [get_json_list(get_unconfirmed_data_directory(name)) for name in experiment_names]
+    linestyles = ['dashed', 'solid', 'dotted', 'dashdot']
+    for dimension, color in [
+        (15, "black"),
+        # (10, "green"),
+        # (15, "blue")
+    ]:
         for samples in [
-            15,
+            # 15,
             # 25,
             # 45,
             # 70,
-            # 100
+            100
         ]:
-            plot_by_error(json_list_measure_old, dimension=dimension, samples=samples, algo='measure', color=color, linestyle='--', filter="reconstruction_errors")
-            plot_by_error(json_list_sync_old, dimension=dimension, samples=samples, algo='sync', color=color, filter="reconstruction_errors")
-            plot_by_error(json_list_stupid_solution, dimension=dimension, samples=samples, algo='sync', linestyle='-.', color=color, filter="reconstruction_errors")
+            for experiment_data, algo, linestyle in zip(json_list, experiment_names, linestyles):
+                plot_by_error(experiment_data, dimension=dimension, samples=samples, algo=algo,
+                              filter=comparison_metric)
     plt.legend(loc='upper left')
     plt.show()
-
-
 
 
 if __name__ == "__main__":

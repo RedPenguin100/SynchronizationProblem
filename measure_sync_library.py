@@ -117,7 +117,7 @@ def scipy_get_cost(x0: np.ndarray, distributions, samples_size, dimension_size):
     for j in range(samples_size):
         for i in range(j):
             term = distributions[i, j] - discrete_cross_correlation(variables[i], variables[j])
-            cost += np.linalg.norm(term)
+            cost += np.linalg.norm(term) ** 2
     return cost
 
 
@@ -147,7 +147,7 @@ def scipy_constraints(sample_size, dimensions):
 def get_distributions_from_noisy_samples(noisy_samples, samples, dimension):
     distributions = np.empty((samples, samples, dimension))
     for j in range(samples):
-        for i in range(j):
+        for i in range(samples):
             # Cross correlation between signal and noisy shifted copies are stores as our samples.
             distributions[i, j, :] = discrete_cross_correlation(noisy_samples[i], noisy_samples[j])
     return distributions
@@ -175,13 +175,13 @@ def stupid_solution_distributions(distributions):
     assert samples == samples2
     dimension = distributions.shape[2]
 
-    wrong_guesses = np.zeros((samples, dimension))
-    wrong_guesses[0, 0] = 1
+    okay_guesses = np.zeros((samples, dimension))
+    okay_guesses[0, 0] = 1
     for j in range(1, samples):
         index = np.argmax(distributions[0, j])
-        wrong_guesses[j, dimension - index - 1] = 1
+        okay_guesses[j, index] = 1
 
-    return wrong_guesses
+    return okay_guesses
 
 
 def solve_measure_sync_scipy(distributions, guesses=None):
@@ -196,3 +196,83 @@ def solve_measure_sync_scipy(distributions, guesses=None):
     return scipy.optimize.minimize(scipy_get_cost, guesses, args=(distributions, samples, dimension),
                                    constraints=constraints,
                                    options={'maxiter': 1000, 'ftol': 1e-2})
+
+
+def attempt_samples_to_noiseless(samples):
+    # Turns row [0.1, 0.75, 0.15] --> [0., 1., 0.], a group member.
+    assert len(samples.shape) == 2
+    samples_copy = np.copy(samples)
+    sample_size, dimension = samples_copy.shape
+    for sample in range(sample_size):
+        # argmax = np.argmax(np.abs(samples_copy[sample]))
+        argmax = np.argmax(samples_copy[sample])
+        samples_copy[sample] = np.zeros(dimension)
+        samples_copy[sample][argmax] = 1.
+    return samples_copy
+
+
+def compare_samples_up_to_shift(truth, result, should_shift=True, debug=False):
+    if len(truth.shape) != 2:
+        raise ValueError("samples.shape is not len 2")
+    if truth.shape != result.shape:
+        raise ValueError("Bad shapes")
+    sample_size, dimension = truth.shape
+
+    noiseless = attempt_samples_to_noiseless(result)
+    total_cost = np.inf
+    total_wrongs_in_best_shift = 0
+
+    wrong_samples = []
+    correct_was = []
+    winning_shift = 0
+    shifts = sample_size
+    if not should_shift:
+        shifts = 1
+
+    for shift in range(shifts):
+        cost = 0.
+        wrongs = 0
+        wrong_samples_temp = []
+        correct_was_temp = []
+        for sample in range(sample_size):
+            rolled_sample = np.roll(noiseless[sample], shift)
+            temp_cost = np.linalg.norm(truth[sample] - rolled_sample)
+            cost += temp_cost
+            if temp_cost > 0:
+                wrongs += 1
+                wrong_samples_temp.append(np.roll(result[sample], shift))
+                correct_was_temp.append(truth[sample])
+        if cost < total_cost:
+            total_wrongs_in_best_shift = wrongs
+            total_cost = cost
+            wrong_samples = wrong_samples_temp
+            correct_was = correct_was_temp
+            winning_shift = shift
+    if debug:
+        print("wrong_samples: ", wrong_samples)
+        # print("correct_was: ", correct_was)
+        print("winning_shift: ", winning_shift)
+    tol = 0.7
+    total_eliminated = 0
+    correctly_eliminated = 0
+    for sample in range(sample_size):
+        sort = np.sort(result[sample])
+        if (sort[-1] - sort[-2]) < 0.1:
+            # print("Too close to second peak ", result[sample])
+            pass
+        if sort[-1] < tol:
+            total_eliminated += 1
+            if debug:
+                print("Too small value ", np.roll(result[sample], shift=winning_shift))
+            for wrong_sample in wrong_samples:
+                if np.array_equal(np.roll(result[sample], shift=winning_shift), wrong_sample):
+                    correctly_eliminated += 1
+    if total_eliminated != 0:
+        remaining_errors = total_wrongs_in_best_shift - correctly_eliminated
+        if debug:
+            print(
+                f"Eliminated {correctly_eliminated} / {total_eliminated} correctly out of {total_wrongs_in_best_shift}")
+            print(sample_size)
+            print(
+                f"New error: {100.0 * remaining_errors / (sample_size - total_eliminated)}%, Old error:{100.0 * total_wrongs_in_best_shift / sample_size}% of samples removed")
+    return total_cost, total_wrongs_in_best_shift

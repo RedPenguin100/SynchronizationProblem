@@ -6,7 +6,7 @@ from measure_sync_library import array_validation
 
 
 class OptAlgorithm:
-    best_apriori = 'best_apriori'
+    measure_best_apriori = 'measure_best_apriori'
     best_possible = 'best_possible'
     pure_random = 'pure_random'
     stupid_solution = 'stupid_solution'
@@ -71,3 +71,8 @@ class Experiment:
         self.wrong_samples.append(result.wrong_samples)
         self.reconstruction_errors.append(result.reconstruction_error)
         self.total_duration += result.duration
+
+
+class ComparisonMetric:
+    wrong_samples = "wrong_samples"
+    reconstruction_errors = "reconstruction_errors"

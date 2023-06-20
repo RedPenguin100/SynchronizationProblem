@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 import pytest
 import numpy as np
@@ -136,6 +137,7 @@ def test_sync_mra_with_measure_setting(sigma, dimension, samples):
         pytest.skip("Experiment already executed")
 
     def test_sync(setting, seed, verbose):
+        start = time.time()
         sigma = setting.sigma
         dimension = setting.dimension
         samples = setting.samples
@@ -145,7 +147,7 @@ def test_sync_mra_with_measure_setting(sigma, dimension, samples):
 
         noisy_samples, noise, shifts = get_noisy_samples_from_signal(x, n=samples, sigma=sigma)
         shift_matrix = shifts_to_matrix(shifts, samples, dimension)
-
+        distributions = get_distributions_from_noisy_samples(noisy_samples, samples, dimension)
         B = np.empty((samples * dimension, samples * dimension))
 
         for i in range(samples):
@@ -155,6 +157,12 @@ def test_sync_mra_with_measure_setting(sigma, dimension, samples):
                     B[d * i: d * (i + 1), d * j: d * (j + 1)] = np.eye(d)
                 else:
                     corr = discrete_cross_correlation(noisy_samples[i], noisy_samples[j])
+                    if not np.array_equal(corr, distributions[i, j, :]):
+                        print("Diff!")
+                        print(corr)
+                        print(distributions[i,j, :])
+                        print("Other way")
+                        print(distributions[j,i, :])
                     n_roll = np.argmax(corr)
                     # print("Samples: {}, {}".format(noisy_samples[i], noisy_samples[j]))
                     # print("Roll matrix: ", dimension - n_roll)
@@ -164,12 +172,6 @@ def test_sync_mra_with_measure_setting(sigma, dimension, samples):
         # print(B.shape)
         R_hat = solve_sync_with_spectral(B, dimension, problem=Problem.mra)
         V = V.reshape((samples, dimension, dimension))
-        # print("B", B)
-        # print("V", V)
-        #
-        # print(R_hat)
-        total_error, outliers = get_error(R_hat, V, dimension, problem=Problem.mra)
-        print("Average error:", total_error / samples)
 
         print("r0", R_hat[0])
         print("r1", R_hat[1])
@@ -177,6 +179,10 @@ def test_sync_mra_with_measure_setting(sigma, dimension, samples):
         for i in range(samples):
             solution[i] = get_shift_vec_from_matrix(R_hat[i])
         print(solution.shape)
+
+        total_error, outliers = get_error(R_hat, V, dimension, problem=Problem.mra)
+        print("Average error:", total_error / samples)
+
         print(len(solution.shape))
         print(shift_matrix.shape)
         signal_1 = reconstruct_signal_from_solution(noisy_samples, solution)
@@ -184,7 +190,9 @@ def test_sync_mra_with_measure_setting(sigma, dimension, samples):
         reconstruction_error = get_distance_mra(x, signal_1)
         print(reconstruction_error)
         # noisy samples is [g_1, g_2, g_3, ..., g_n]
-        return Result(outliers, reconstruction_error)
+
+        end = time.time()
+        return Result(outliers, reconstruction_error, duration=end - start)
 
     # Run tests
     for i in range(20):
