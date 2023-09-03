@@ -16,7 +16,7 @@ DATA_SYNC_DIR = os.path.join(PROJECT_ROOT, "data_sync")
 
 
 def get_unconfirmed_data_directory(experiment_name):
-    return os.path.join(PROJECT_ROOT, "data_" + experiment_name)
+    return os.path.join(PROJECT_ROOT, "data", experiment_name)
 
 
 def get_data_directory(algorithm: OptAlgorithm):

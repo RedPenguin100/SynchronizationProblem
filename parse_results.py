@@ -2,8 +2,7 @@ import json
 import os
 from typing import List
 
-from directories import DATA_DIR, DATA_SYNC_DIR, DATA_SYNC_DIR_OLD, DATA_DIR_OLD, DATA_STUPID_SOLUTION_DIR, \
-    DATA_MEASURE_BEST_APRIORI, DATA_PURE_RANDOM, DATA_MEASURE_BEST_APRIORI_UNSQUARED, get_unconfirmed_data_directory
+from directories import get_unconfirmed_data_directory
 from math_utils import average
 import matplotlib.pyplot as plt
 

@@ -1,6 +1,6 @@
 import numpy as np
 import scipy
-from numba import njit
+from numba import njit, carray, float64
 
 
 @njit
@@ -87,38 +87,19 @@ def solve_best_shift(arr1: np.array, arr2: np.array):
     return argmin
 
 
-# @njit
-# def scipy_get_cost(x0: np.ndarray, distributions, samples_size, dimension_size):
-#     variables = x0.reshape((samples_size, dimension_size))
-#
-#     cost = 0.
-#     for j in range(samples_size):
-#         for i in range(j):
-#             term = distributions[i, j] - discrete_cross_correlation(variables[i], variables[j])
-#             cost += np.linalg.norm(term)
-
-# # Internal consistency condition
-# for x in range(samples_size):
-#     for y in range(x):
-#         for z in range(y):
-#             v1 = discrete_cross_correlation(variables[z], variables[y])
-#             v2 = discrete_cross_correlation(variables[x], variables[y])
-#             v3 = discrete_cross_correlation(variables[y], variables[x])
-#             v4 = discrete_cross_correlation(variables[y], variables[z])
-#             term1 = discrete_cross_correlation(v1, v2)
-#             term2 = discrete_cross_correlation(v3, v4)
-#             cost += np.linalg.norm(term1 - term2) ** 2
-
 @njit
 def scipy_get_cost(x0: np.ndarray, distributions, samples_size, dimension_size):
     variables = x0.reshape((samples_size, dimension_size))
+    distributions_reshaped = distributions.reshape((samples_size, samples_size, dimension_size))
 
     cost = 0.
-    for j in range(samples_size):
-        for i in range(j):
-            term = distributions[i, j] - discrete_cross_correlation(variables[i], variables[j])
+    for i in range(samples_size):
+        for j in range(i):
+            term = distributions_reshaped[i, j] - discrete_cross_correlation(variables[i], variables[j])
             cost += np.linalg.norm(term) ** 2
+
     return cost
+
 
 
 def scipy_constraints(sample_size, dimensions):
@@ -145,7 +126,7 @@ def scipy_constraints(sample_size, dimensions):
 
 @njit
 def get_distributions_from_noisy_samples(noisy_samples, samples, dimension):
-    distributions = np.empty((samples, samples, dimension))
+    distributions = np.empty((samples, samples, dimension), dtype=np.float64)
     for j in range(samples):
         for i in range(samples):
             # Cross correlation between signal and noisy shifted copies are stores as our samples.
@@ -175,7 +156,7 @@ def stupid_solution_distributions(distributions):
     assert samples == samples2
     dimension = distributions.shape[2]
 
-    okay_guesses = np.zeros((samples, dimension))
+    okay_guesses = np.zeros((samples, dimension), dtype=np.float64)
     okay_guesses[0, 0] = 1
     for j in range(1, samples):
         index = np.argmax(distributions[0, j])
@@ -192,8 +173,12 @@ def solve_measure_sync_scipy(distributions, guesses=None):
     assert samples == samples2
     dimension = distributions.shape[2]
 
+    if guesses is not None:
+        guesses = guesses.reshape((samples * dimension))
+
     constraints = scipy_constraints(samples, dimension)
-    return scipy.optimize.minimize(scipy_get_cost, guesses, args=(distributions, samples, dimension),
+    return scipy.optimize.minimize(scipy_get_cost, guesses,
+                                   args=(distributions.reshape(samples * samples * dimension), samples, dimension),
                                    constraints=constraints,
                                    options={'maxiter': 1000, 'ftol': 1e-2})
 

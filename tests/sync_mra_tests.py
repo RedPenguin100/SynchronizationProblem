@@ -10,7 +10,7 @@ from directories import DATA_SYNC_DIR
 
 from measure_sync_experiments import get_noisy_samples_from_signal
 from measure_sync_library import get_distributions_from_noisy_samples, discrete_convolution, discrete_cross_correlation
-from measure_sync_tests import shifts_to_matrix, reconstruct_signal_from_solution, compare_samples_up_to_shift, \
+from measure_tests import shifts_to_matrix, reconstruct_signal_from_solution, compare_samples_up_to_shift, \
     get_distance_mra
 from sync_library import get_so_projection, get_error, solve_sync_with_spectral, truly_random_so_matrix, \
     block_assignment, add_noise_to_matrix, add_holes_to_matrix, create_d_matrix, Problem, get_mra_projection, \

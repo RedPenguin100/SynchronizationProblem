@@ -12,7 +12,7 @@ def get_projection(X, d=3, problem=Problem.mra):
         return get_mra_projection(X)
     if problem == Problem.rotation:
         return get_so_projection(X, d)
-    raise NotImplemented()
+    raise NotImplemented(f"Unknown problem {problem} received")
 
 
 @njit
