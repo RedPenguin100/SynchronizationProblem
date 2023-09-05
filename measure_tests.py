@@ -251,8 +251,8 @@ def solve_distributions(algorithm, distributions, samples, dimension, verbose=Fa
         raise ValueError(f"Unknown algorithm: {algorithm}")
 
 
-def util_test_measure(setting, algorithm=None, seed=None, verbose=False, debug=False,
-                      distribution_cleaner=None):
+def util_test_noisy_measure(setting, algorithm=None, seed=None, verbose=False, debug=False,
+                            distribution_cleaner=None):
     # printing
     np.set_printoptions(precision=2)
     if verbose:
@@ -324,7 +324,7 @@ def util_test_measure(setting, algorithm=None, seed=None, verbose=False, debug=F
     0.,
     0.1,
     0.2,
-    0.25,
+    # 0.25,
     0.3,
     0.4,
     0.5,
@@ -332,18 +332,18 @@ def util_test_measure(setting, algorithm=None, seed=None, verbose=False, debug=F
     # 1.
 ])
 @pytest.mark.parametrize('samples', [
-    15,
-    25,
-    45,
+    # 15,
+    # 25,
+    # 45,
     70,
     100
 ])
 @pytest.mark.parametrize('dimension', [
-    5,
-    10,
+    # 5,
+    # 10,
     15
 ])
-def test_measure(sigma, samples, dimension, algorithm):
+def test_measure_uniform_noise(sigma, samples, dimension, algorithm):
     np.random.seed(0)
     # Create signal
     signal = np.zeros(dimension)
@@ -367,7 +367,7 @@ def test_measure(sigma, samples, dimension, algorithm):
     # Run tests
     for i in range(experiment_count):
         try:
-            result = util_test_measure(setting, algorithm, seed=i, verbose=True)
+            result = util_test_noisy_measure(setting, algorithm, seed=i, verbose=True)
             results.add_result(result)
         except Exception as e:
             errors.append(e)
@@ -380,3 +380,142 @@ def test_measure(sigma, samples, dimension, algorithm):
     json_string = json.dumps(results, default=lambda x: x.__dict__, sort_keys=True, indent=4)
     with open(result_path, 'w+') as f:
         f.write(json_string)
+
+
+def util_test_noiseless_outliers(setting, algorithm=None, seed=None, verbose=False, debug=False,
+                            distribution_cleaner=None):
+    # printing
+    np.set_printoptions(precision=2)
+    if verbose:
+        print()
+    test_start = time.time()
+
+    # Setup
+
+    sigma = setting.sigma
+    dimension = setting.dimension
+    samples = setting.samples
+    signal = setting.signal
+    outliers = setting.outliers
+
+    if seed is not None:
+        np.random.seed(seed)
+
+    if signal is not None:
+        x = signal
+    else:
+        x = np.zeros(dimension)
+        x[0] = 1
+        x[1] = 0.5
+        x = x / np.linalg.norm(x)
+
+    noisy_samples, noise, shifts = get_noisy_samples_from_signal(x, n=samples, sigma=sigma, outliers=outliers)
+
+    # --  Problem setup --
+    truth = get_shifted(x, shifts, dimension, samples)
+    shift_matrix = shifts_to_matrix(shifts, samples, dimension)
+    if verbose:
+        print("Shift matrix: ", shift_matrix)
+    flat_shift_matrix = shift_matrix.reshape((samples * dimension))
+    distributions = get_distributions_from_noisy_samples(noisy_samples, samples, dimension)
+
+    # -- Problem starts here --
+    if distribution_cleaner is not None:
+        distributions = distribution_cleaner(distributions)
+    if verbose:
+        # print("shift_matrix: ", shift_matrix)
+        print("shift_matrix cost", scipy_get_cost(flat_shift_matrix, distributions, samples, dimension))
+        print("truth cost", scipy_get_cost(truth.reshape((samples * dimension)), distributions, samples, dimension))
+
+    solver_solution = solve_distributions(algorithm, distributions, samples, dimension, verbose=verbose)
+    if verbose:
+        print("Solver solution: \n", solver_solution.shape)
+        print("Shift matrix shape: \n", shift_matrix.shape)
+    apriori_best = compare_samples_up_to_shift(shift_matrix, solver_solution, debug=debug)
+    signal_1 = reconstruct_signal_from_solution(noisy_samples, solver_solution)
+    reconstruction_error = get_distance_mra(x, signal_1)
+
+    perfect = reconstruct_signal_from_solution(noisy_samples, shift_matrix)
+    # if debug:
+    print("best_apriori_solutions ", solver_solution)
+    if verbose:
+        print("Perfect ", perfect)
+        print("Total noise perfect alignment: ", np.linalg.norm(perfect - x))
+
+    test_end = time.time()
+
+    return Result(apriori_best[1], reconstruction_error, test_end - test_start, seed)
+
+@pytest.mark.parametrize('algorithm',
+                         [
+                             OptAlgorithm.sync_mra,
+                             OptAlgorithm.measure_best_apriori,
+                             OptAlgorithm.pure_random,
+                             OptAlgorithm.stupid_solution
+                         ])
+@pytest.mark.parametrize('outliers', [
+    0.,
+    0.02,
+    0.04,
+    0.06,
+    0.08,
+    0.1,
+])
+@pytest.mark.parametrize('sigma', [0,
+                                   0.1,
+                                   0.2,
+                                   0.3,
+                                   0.4,
+                                   ])
+@pytest.mark.parametrize('samples', [
+    # 15,
+    # 25,
+    # 45,
+    70,
+    # 100
+])
+@pytest.mark.parametrize('dimension', [
+    5,
+    # 10,
+    # 15
+])
+def test_measure_noiseless_outliers(outliers, sigma, samples, dimension, algorithm):
+    np.random.seed(0)
+    # Create signal
+    signal = np.zeros(dimension)
+    signal[0] = 1
+    signal[1] = 0.5
+    signal[4] = 0.2
+    signal /= np.linalg.norm(signal)
+
+    # Create setting
+    setting = Setting(sigma, samples, dimension, signal, algorithm, outliers=outliers)
+    errors = []
+    results = Experiment(setting)
+
+    FULL_DATA_DIR = os.path.join(PROJECT_ROOT, "data", algorithm + "_outliers")
+    print(f"Data directory: {FULL_DATA_DIR}")
+    result_path = os.path.join(FULL_DATA_DIR, str(setting)) + ".json"
+    if os.path.exists(result_path):
+        pytest.skip("Experiment already executed")
+    if not os.path.exists(FULL_DATA_DIR):
+        os.makedirs(FULL_DATA_DIR)
+
+    experiment_count = 20
+    # Run tests
+    for i in range(experiment_count):
+        try:
+            result = util_test_noiseless_outliers(setting, algorithm, seed=i, verbose=False)
+            results.add_result(result)
+        except Exception as e:
+            errors.append(e)
+            print("Encountered error:", e)
+    print("Done execution")
+    print(f"Total errors: {len(errors)}")
+    results.print()
+    setting.print_summary()
+    results.setting.signal = list(results.setting.signal)
+    json_string = json.dumps(results, default=lambda x: x.__dict__, sort_keys=True, indent=4)
+    with open(result_path, 'w+') as f:
+        f.write(json_string)
+

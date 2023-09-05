@@ -1,6 +1,6 @@
 import numpy as np
 import scipy
-from numba import njit, carray, float64
+from numba import njit, carray, float64, objmode
 
 
 @njit
@@ -39,6 +39,15 @@ def discrete_convolution(arr1: np.array, arr2: np.array):
 
 
 @njit
+def discrete_kullback_leibler(arr1: np.array, arr2: np.array, regularizer=0.01):
+    # array_validation(arr1)
+    # array_validation(arr2)
+    # dimension_validation(arr1, arr2)
+    n = arr1.shape[0]
+    res_arr = np.zeros_like(arr1, dtype=np.float64)
+
+
+@njit
 def discrete_cross_correlation(arr1: np.array, arr2: np.array):
     """
     Cross correlation
@@ -49,9 +58,9 @@ def discrete_cross_correlation(arr1: np.array, arr2: np.array):
        -->
            -->
     """
-    # array_validation(arr1)
-    # array_validation(arr2)
-    # dimension_validation(arr1, arr2)
+    array_validation(arr1)
+    array_validation(arr2)
+    dimension_validation(arr1, arr2)
     n = arr1.shape[0]
 
     conv_arr = np.zeros_like(arr1, dtype=np.float64)
@@ -60,6 +69,15 @@ def discrete_cross_correlation(arr1: np.array, arr2: np.array):
             conv_arr[k] += arr1[i] * arr2[(i + k) % n]
 
     return conv_arr
+
+    # TODO: understand how good this alternative
+    # n = arr1.shape[0]
+    #
+    # res = np.zeros_like(arr1, dtype=np.float64)
+    # for k in range(n):
+    #     res[k] = np.linalg.norm(np.roll(arr1, k) - arr2) ** 2
+    # res = np.exp(-res)
+    # return res / np.sum(res)
 
 
 @njit
@@ -88,18 +106,106 @@ def solve_best_shift(arr1: np.array, arr2: np.array):
 
 
 @njit
-def scipy_get_cost(x0: np.ndarray, distributions, samples_size, dimension_size):
+def scipy_get_cost_kl(x0: np.ndarray, distributions, samples_size, dimension_size):
     variables = x0.reshape((samples_size, dimension_size))
     distributions_reshaped = distributions.reshape((samples_size, samples_size, dimension_size))
 
     cost = 0.
+    epsilon = 0.01
     for i in range(samples_size):
         for j in range(i):
-            term = distributions_reshaped[i, j] - discrete_cross_correlation(variables[i], variables[j])
-            cost += np.linalg.norm(term) ** 2
+            term = 0.
+            cross_correlation = discrete_cross_correlation(variables[i], variables[j])
+            for k in range(dimension_size):
+                p_k = (distributions_reshaped[i, j][k] + epsilon)
+                q_k = cross_correlation[k] + epsilon
+                term += p_k * np.log(p_k / q_k)
+            cost += term
 
     return cost
 
+
+@njit
+def create_circulant(vector, out):
+    n = vector.shape[0]
+    for i in range(n):
+        for j in range(n):
+            out[i, j] = vector[(j - i) % n]
+
+
+@njit
+def subtract_with_out(a, b, out):
+    for i in range(a.shape[0]):
+        out[i] = a[i] - b[i]
+
+
+@njit
+def multiply_with_out(a, b, out):
+    for i in range(a.shape[0]):
+        out[i] = a[i] * b[i]
+
+
+@njit
+def conjugate_with_out(a, out):
+    for i in range(a.shape[0]):
+        out[i] = a[i].conjugate()
+
+
+@njit
+def division_vec_by_int_with_out(a, b, out):
+    for i in range(a.shape[0]):
+        out[i] = a[i] / b
+
+
+# TODO: FFT should be quicker
+# @njit
+# def scipy_get_cost_quick(x0: np.ndarray, distributions, samples_size, dimension_size, out_ci, out_vec_mul,
+#                          out_vec_subtraction):
+#     variables = x0.reshape((samples_size, dimension_size))
+#     distributions_reshaped = distributions.reshape((samples_size, samples_size, dimension_size))
+#
+#     cost = 0.
+#     variables_fft = np.fft.fft(variables)
+#     # variables_ifft = np.conjugate(variables_fft) / dimension_size
+#
+#     for i in range(1, samples_size):
+#         # create_circulant(variables[i], out=out_ci)
+#         for j in range(i):
+#             # Performs matrix multiplication
+#             conjugate_with_out(variables_fft[j], out=out_vec_mul)
+#             division_vec_by_int_with_out(out_vec_mul, dimension_size, out_vec_mul)
+#
+#             multiply_with_out(variables_fft[i], out_vec_mul, out=out_vec_mul)
+#             subtract_with_out(distributions_reshaped[i, j], np.fft.fft(out_vec_mul), out=out_vec_subtraction)
+#             cost += np.linalg.norm(out_vec_subtraction) ** 2
+#     return cost
+
+
+@njit
+def scipy_get_cost_quick(x0: np.ndarray, distributions, samples_size, dimension_size, out_ci, out_vec_mul,
+                         out_vec_subtraction):
+    variables = x0.reshape((samples_size, dimension_size))
+    distributions_reshaped = distributions.reshape((samples_size, samples_size, dimension_size))
+
+    cost = 0.
+
+    for i in range(samples_size):
+        create_circulant(variables[i], out=out_ci)
+        for j in range(i):
+            # Performs matrix multiplication
+            np.dot(out_ci, variables[j], out=out_vec_mul)
+            subtract_with_out(distributions_reshaped[i, j], out_vec_mul, out=out_vec_subtraction)
+            cost += np.linalg.norm(out_vec_subtraction) ** 2
+    return cost
+
+
+@njit
+def scipy_get_cost(x0: np.ndarray, distributions, samples_size, dimension_size):
+    out_ci = np.empty((dimension_size, dimension_size), dtype=np.float64)
+    out_vec_mul = np.empty(dimension_size, dtype=np.float64)
+    out_vec_subtraction = np.empty(dimension_size, dtype=np.float64)
+    return scipy_get_cost_quick(x0, distributions, samples_size, dimension_size, out_ci, out_vec_mul,
+                                out_vec_subtraction)
 
 
 def scipy_constraints(sample_size, dimensions):
@@ -177,10 +283,17 @@ def solve_measure_sync_scipy(distributions, guesses=None):
         guesses = guesses.reshape((samples * dimension))
 
     constraints = scipy_constraints(samples, dimension)
-    return scipy.optimize.minimize(scipy_get_cost, guesses,
-                                   args=(distributions.reshape(samples * samples * dimension), samples, dimension),
+    out_ci = np.empty((dimension, dimension), dtype=np.float64)
+    out_vec_mul = np.empty(dimension, dtype=np.float64)
+    out_vec_subtraction = np.empty(dimension, dtype=np.float64)
+
+    return scipy.optimize.minimize(scipy_get_cost_quick, guesses,
+                                   args=(
+                                       distributions.reshape(samples * samples * dimension), samples, dimension, out_ci,
+                                       out_vec_mul, out_vec_subtraction),
                                    constraints=constraints,
                                    options={'maxiter': 1000, 'ftol': 1e-2})
+    # )
 
 
 def attempt_samples_to_noiseless(samples):

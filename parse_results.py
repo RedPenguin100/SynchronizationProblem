@@ -1,4 +1,5 @@
 import json
+import math
 import os
 from typing import List
 
@@ -7,6 +8,11 @@ from math_utils import average
 import matplotlib.pyplot as plt
 
 from test_utils import ComparisonMetric
+
+
+class PlottingMetric:
+    sigma = "sigma"
+    outliers = "outliers"
 
 
 def get_data_files(data_dir) -> List:
@@ -27,7 +33,8 @@ def get_json_list(data_dir):
     return data_file_contents
 
 
-def plot_by_error(json_list, dimension, samples, algo, color=None, linestyle=None, filter=None):
+def plot_by_metric(json_list, dimension, samples, algo, color=None, linestyle=None, filter=None,
+                   plotting_metric=PlottingMetric.sigma, sigma=None, outliers=None):
     if filter is None:
         raise Exception("Need to pass filter!")
     filtered_jsons = []
@@ -36,37 +43,52 @@ def plot_by_error(json_list, dimension, samples, algo, color=None, linestyle=Non
             continue
         if j['setting']['dimension'] != dimension:
             continue
+        if sigma is not None:
+            if j['setting']['sigma'] != sigma:
+                continue
+        if outliers is not None:
+            if j['setting']['outliers'] != outliers:
+                continue
         filtered_jsons.append(j)
-    sigma_values = []
+    snr_values = []
     average_error = []
     for filtered in filtered_jsons:
-        sigma_values.append(filtered['setting']['sigma'])
+        snr_values.append(filtered['setting'][plotting_metric])
         average_error.append(average(filtered[filter]))
-    plt.plot(sigma_values, average_error, label=f"N={samples}, d={dimension}, alg={algo}", color=color,
+    print(snr_values)
+    outliers_str = "" if outliers is None else str(outliers)
+    # if 'sync' in algo:
+    #     color = 'black'
+    # else:
+    #     color = 'red'
+
+    plt.plot(snr_values, average_error, label=f"N={samples}, d={dimension}, alg={algo}, outliers={outliers_str}", color=color,
              linestyle=linestyle)
 
 
 def main():
     comparison_metric = ComparisonMetric.reconstruction_errors
 
-    experiment_names = ['pure_random', 'measure_best_apriori', 'sync_mra', 'stupid_solution']
+    # experiment_names = ['pure_random', 'measure_best_apriori', 'sync_mra', 'stupid_solution']
+    experiment_names = ['measure_best_apriori', 'measure_best_apriori_before_change', 'sync_mra']
     json_list = [get_json_list(get_unconfirmed_data_directory(name)) for name in experiment_names]
     linestyles = ['dashed', 'solid', 'dotted', 'dashdot']
     for dimension, color in [
-        (15, "black"),
+        (5, "black"),
         # (10, "green"),
         # (15, "blue")
     ]:
         for samples in [
             # 15,
-            # 25,
+            25,
             # 45,
             # 70,
-            100
+            # 100
         ]:
             for experiment_data, algo, linestyle in zip(json_list, experiment_names, linestyles):
-                plot_by_error(experiment_data, dimension=dimension, samples=samples, algo=algo,
-                              filter=comparison_metric)
+                plot_by_metric(experiment_data, dimension=dimension, samples=samples, algo=algo,
+                               filter=comparison_metric, plotting_metric=PlottingMetric.sigma)
+
     plt.legend(loc='upper left')
     plt.show()
 

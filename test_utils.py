@@ -14,7 +14,7 @@ class OptAlgorithm:
 
 
 class Setting:
-    def __init__(self, sigma, samples, dimension, signal, algorithm):
+    def __init__(self, sigma, samples, dimension, signal, algorithm, outliers=0.):
         self.sigma = sigma
         self.samples = samples
         self.dimension = dimension
@@ -23,9 +23,10 @@ class Setting:
         self.validate_signal()
 
         self.algorithm = algorithm
+        self.outliers = outliers  # as a proportion, between 0 and 1
 
     def __str__(self):
-        return f"{self.sigma},{self.samples},{self.dimension}"
+        return f"{self.sigma},{self.samples},{self.dimension},{self.outliers}"
 
     def validate_signal(self):
         array_validation(self.signal)
@@ -38,6 +39,9 @@ class Setting:
             print("Noiseless setting")
         else:
             print(f"SNR={1 / self.sigma}")
+        if self.outliers != 0.:
+            print("Setting contain outliers")
+        # TODO: calculate sigma adjusted for outliers
 
         print(f"Algorithm: {self.algorithm}")
 
@@ -57,10 +61,11 @@ class Experiment:
         self.reconstruction_errors = []
         self.timestamp = time.time()
         self.total_duration = 0.
+        self.average_reconstruction_error = average(self.reconstruction_errors)
 
     def print(self, verbose=True):
         print(f"Wrong samples average: {average(self.wrong_samples)}")
-        print(f"Average reconstruction error: {average(self.reconstruction_errors)}")
+        print(f"Average reconstruction error: {self.average_reconstruction_error}")
         print(f"Worst reconstruction error: {np.max(self.reconstruction_errors)}")
         print(f"Total results duration: {self.total_duration}")
         if verbose:
@@ -71,6 +76,7 @@ class Experiment:
         self.wrong_samples.append(result.wrong_samples)
         self.reconstruction_errors.append(result.reconstruction_error)
         self.total_duration += result.duration
+        self.average_reconstruction_error = average(self.reconstruction_errors)
 
 
 class ComparisonMetric:
