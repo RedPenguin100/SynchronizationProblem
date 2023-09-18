@@ -205,7 +205,7 @@ def test_cross_correlation_commutativity(roll1, roll2):
     assert np.allclose(np.flip(np.roll(first_side, 4)), second_side)
 
 
-def solve_distributions(algorithm, distributions, samples, dimension, verbose=False):
+def solve_distributions(algorithm, distributions, samples, dimension, verbose=False, solutions=None):
     if algorithm == OptAlgorithm.measure_best_apriori:
         # initial guess
         best_apriori_guess = stupid_solution_distributions(distributions)
@@ -213,14 +213,33 @@ def solve_distributions(algorithm, distributions, samples, dimension, verbose=Fa
         if verbose:
             print("stupid_sol cost: ",
                   scipy_get_cost(best_apriori_guess.reshape(dimension * samples), distributions, samples, dimension))
-            print(f"nit: {res2.nit},"
-                  )
-            print(f"njev: {res2.njev},"
-                  )
-            print(f"fun: {res2.fun}, "
-                  )
+            print(f"nit: {res2.nit},")
+            print(f"njev: {res2.njev},")
+            print(f"fun: {res2.fun}, ")
         assert res2.success, res2.message
         return np.reshape(res2.x, (samples, dimension))
+    elif algorithm == OptAlgorithm.measure_best_apriori_fourier:
+        # initial guess
+        best_apriori_guess = solve_distributions(OptAlgorithm.sync_mra, distributions, samples, dimension)
+        best_apriori_guess_fft = np.fft.fft(best_apriori_guess)
+        print('best_apriori_guess_fft: ', best_apriori_guess_fft)
+        distributions_fft = np.fft.fft(distributions)
+        print('distributions fft: ', distributions_fft)
+        res = solve_measure_fourier_sync(distributions_fft, best_apriori_guess_fft)
+        if verbose:
+            # print("stupid_sol cost: ",
+            #       scipy_get_cost_fourier(
+            #           best_apriori_guess_fft,
+            #           distributions, samples, dimension))
+            print(f"nit: {res.nit},")
+            print(f"njev: {res.njev},")
+            print(f"fun: {res.fun}, ")
+        assert res.success, res.message
+
+        complex_result = res.x.reshape(-1, 2).view(np.complex128)
+        res_reshaped = np.reshape(complex_result, (samples, dimension))
+        res_real = np.fft.ifft(res_reshaped)
+        return res_real.astype(np.float64)
     elif algorithm == OptAlgorithm.stupid_solution:
         # initial guess
         return stupid_solution_distributions(distributions)
@@ -247,6 +266,8 @@ def solve_distributions(algorithm, distributions, samples, dimension, verbose=Fa
         for i in range(samples):
             solution[i] = get_shift_vec_from_matrix(R_hat[i])
         return solution
+    elif algorithm == OptAlgorithm.best_possible:
+        return solutions
     else:
         raise ValueError(f"Unknown algorithm: {algorithm}")
 
@@ -293,7 +314,8 @@ def util_test_noisy_measure(setting, algorithm=None, seed=None, verbose=False, d
         print("shift_matrix cost", scipy_get_cost(flat_shift_matrix, distributions, samples, dimension))
         print("truth cost", scipy_get_cost(truth.reshape((samples * dimension)), distributions, samples, dimension))
 
-    solver_solution = solve_distributions(algorithm, distributions, samples, dimension, verbose=verbose)
+    solver_solution = solve_distributions(algorithm, distributions, samples, dimension, verbose=verbose,
+                                          solutions=truth)
     if verbose:
         print("Solver solution: \n", solver_solution.shape)
         print("Shift matrix shape: \n", shift_matrix.shape)
@@ -316,7 +338,9 @@ def util_test_noisy_measure(setting, algorithm=None, seed=None, verbose=False, d
 @pytest.mark.parametrize('algorithm',
                          [
                              # OptAlgorithm.sync_mra,
-                             OptAlgorithm.measure_best_apriori
+                             # OptAlgorithm.measure_best_apriori
+                             OptAlgorithm.measure_best_apriori_fourier
+                             # OptAlgorithm.best_possible
                              # OptAlgorithm.pure_random,
                              # OptAlgorithm.stupid_solution
                          ])
@@ -333,15 +357,15 @@ def util_test_noisy_measure(setting, algorithm=None, seed=None, verbose=False, d
 ])
 @pytest.mark.parametrize('samples', [
     # 15,
-    # 25,
+    25,
     # 45,
-    70,
-    100
+    # 70,
+    # 100
 ])
 @pytest.mark.parametrize('dimension', [
-    # 5,
+    5,
     # 10,
-    15
+    # 15
 ])
 def test_measure_uniform_noise(sigma, samples, dimension, algorithm):
     np.random.seed(0)
@@ -383,7 +407,7 @@ def test_measure_uniform_noise(sigma, samples, dimension, algorithm):
 
 
 def util_test_noiseless_outliers(setting, algorithm=None, seed=None, verbose=False, debug=False,
-                            distribution_cleaner=None):
+                                 distribution_cleaner=None):
     # printing
     np.set_printoptions(precision=2)
     if verbose:
@@ -446,6 +470,7 @@ def util_test_noiseless_outliers(setting, algorithm=None, seed=None, verbose=Fal
 
     return Result(apriori_best[1], reconstruction_error, test_end - test_start, seed)
 
+
 @pytest.mark.parametrize('algorithm',
                          [
                              OptAlgorithm.sync_mra,
@@ -466,18 +491,19 @@ def util_test_noiseless_outliers(setting, algorithm=None, seed=None, verbose=Fal
                                    0.2,
                                    0.3,
                                    0.4,
+                                   0.5
                                    ])
 @pytest.mark.parametrize('samples', [
-    # 15,
-    # 25,
-    # 45,
+    15,
+    25,
+    45,
     70,
-    # 100
+    100
 ])
 @pytest.mark.parametrize('dimension', [
     5,
-    # 10,
-    # 15
+    10,
+    15
 ])
 def test_measure_noiseless_outliers(outliers, sigma, samples, dimension, algorithm):
     np.random.seed(0)
@@ -518,4 +544,3 @@ def test_measure_noiseless_outliers(outliers, sigma, samples, dimension, algorit
     json_string = json.dumps(results, default=lambda x: x.__dict__, sort_keys=True, indent=4)
     with open(result_path, 'w+') as f:
         f.write(json_string)
-

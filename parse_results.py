@@ -49,6 +49,10 @@ def plot_by_metric(json_list, dimension, samples, algo, color=None, linestyle=No
         if outliers is not None:
             if j['setting']['outliers'] != outliers:
                 continue
+        else:
+            if 'outliers' in j['setting']:
+                if j['setting']['outliers'] != 0:
+                    continue
         filtered_jsons.append(j)
     snr_values = []
     average_error = []
@@ -62,7 +66,8 @@ def plot_by_metric(json_list, dimension, samples, algo, color=None, linestyle=No
     # else:
     #     color = 'red'
 
-    plt.plot(snr_values, average_error, label=f"N={samples}, d={dimension}, alg={algo}, outliers={outliers_str}", color=color,
+    plt.plot(snr_values, average_error, label=f"N={samples}, d={dimension}, alg={algo}, outliers={outliers_str}",
+             color=color,
              linestyle=linestyle)
 
 
@@ -70,7 +75,7 @@ def main():
     comparison_metric = ComparisonMetric.reconstruction_errors
 
     # experiment_names = ['pure_random', 'measure_best_apriori', 'sync_mra', 'stupid_solution']
-    experiment_names = ['measure_best_apriori', 'measure_best_apriori_before_change', 'sync_mra']
+    experiment_names = ['best_possible', 'measure_best_apriori_fourier', 'measure_best_apriori_outliers', 'sync_mra']
     json_list = [get_json_list(get_unconfirmed_data_directory(name)) for name in experiment_names]
     linestyles = ['dashed', 'solid', 'dotted', 'dashdot']
     for dimension, color in [
@@ -89,9 +94,8 @@ def main():
                 plot_by_metric(experiment_data, dimension=dimension, samples=samples, algo=algo,
                                filter=comparison_metric, plotting_metric=PlottingMetric.sigma)
 
-    plt.legend(loc='upper left')
-    plt.show()
-
+        plt.legend(loc='upper left')
+        plt.show()
 
 if __name__ == "__main__":
     main()

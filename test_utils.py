@@ -7,6 +7,7 @@ from measure_sync_library import array_validation
 
 class OptAlgorithm:
     measure_best_apriori = 'measure_best_apriori'
+    measure_best_apriori_fourier = 'measure_best_apriori_fourier'
     best_possible = 'best_possible'
     pure_random = 'pure_random'
     stupid_solution = 'stupid_solution'
